@@ -9,5 +9,27 @@ target_link_libraries(apollo_smoke_test
 
 target_compile_features(apollo_smoke_test PRIVATE cxx_std_20)
 
+add_executable(apollo_source_listing_test
+    source_listing_test.cpp
+)
+
+target_link_libraries(apollo_source_listing_test
+    PRIVATE
+        apollo::common
+)
+
+target_compile_features(apollo_source_listing_test PRIVATE cxx_std_20)
+
 add_test(NAME apollo_smoke_test COMMAND apollo_smoke_test)
+add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
+
+add_test(
+    NAME apolloc_list_fixture
+    COMMAND $<TARGET_FILE:apolloc> --list ${CMAKE_SOURCE_DIR}/tests/fixtures/list_sample.pas
+)
+add_test(
+    NAME apolloc_list_missing
+    COMMAND $<TARGET_FILE:apolloc> --list ${CMAKE_SOURCE_DIR}/tests/fixtures/does-not-exist.pas
+)
+set_tests_properties(apolloc_list_missing PROPERTIES WILL_FAIL TRUE)

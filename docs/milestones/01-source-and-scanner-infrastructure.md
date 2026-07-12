@@ -76,12 +76,12 @@ numbered listing. This is the Milestone 1 “hello world” of the toolchain.
 
 **Acceptance criteria**
 
-- [ ] `apolloc --list examples/...` prints every source line with 1-based numbers.
-- [ ] In-memory and path-loaded text produce the same listing for the same contents.
-- [ ] CRLF fixtures list with the same line count as LF equivalents.
-- [ ] No Gemini / Pick filesystem dependency.
+- [x] `apolloc --list examples/...` prints every source line with 1-based numbers.
+- [x] In-memory and path-loaded text produce the same listing for the same contents.
+- [x] CRLF fixtures list with the same line count as LF equivalents.
+- [x] No Gemini / Pick filesystem dependency.
 
-**Status:** planned.
+**Status:** completed.
 
 ### Stage 2 — Locations & diagnostics (M1b)
 
@@ -324,7 +324,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Source & listing utility (first executable) | planned |
+| Stage 1 — Source & listing utility (first executable) | completed |
 | Stage 2 — Locations & diagnostics | planned |
 | Stage 3 — Pascal scanner | planned |
 | Stage 4 — Improved listing, `--tokens`, close-out | planned |

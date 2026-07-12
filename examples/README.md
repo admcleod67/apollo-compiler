@@ -1,6 +1,12 @@
 # Examples
 
-Sample Apollo source programs will live here.
+Sample Apollo source programs live here.
 
-The first language front-end is **Pascal**. Early examples will target Gemini VM
-bytecode (`.tbc`) once the scanner, parser, and codegen pipeline exists.
+The first language front-end is **Pascal**. Stage 1 of Milestone 1 supports numbered
+listings via `apolloc --list`:
+
+```bash
+apolloc --list examples/hello.pas
+```
+
+Later milestones will compile these examples to Gemini VM bytecode (`.tbc`).

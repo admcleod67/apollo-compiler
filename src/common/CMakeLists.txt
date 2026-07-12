@@ -1,5 +1,7 @@
 add_library(apollo-common
     Version.cpp
+    SourceFile.cpp
+    Listing.cpp
 )
 
 add_library(apollo::common ALIAS apollo-common)

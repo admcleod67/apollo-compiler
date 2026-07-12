@@ -40,8 +40,23 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (skeleton; `--version` / `--help` only for now)
-- **`apollo-common`** — shared compiler support library
+- **`apolloc`** — compiler driver CLI (`--list`, `--version`, `--help`)
+- **`apollo-common`** — shared compiler support library (source buffer + listing)
+
+### Listing a source file
+
+```bash
+./build/src/tools/apolloc --list examples/hello.pas
+```
+
+Prints a numbered listing (width-4 line numbers), for example:
+
+```text
+   1: program Hello;
+   2: begin
+   3:   writeln('Hello, Gemini!');
+   4: end.
+```
 
 ## Layout
 
@@ -50,7 +65,7 @@ apollo-compiler/
   docs/           Project overview and milestones
   include/apollo/ Public headers
   src/
-    common/       Shared support (tokens, diagnostics, source — forthcoming)
+    common/       Shared support (source buffer, listing; diagnostics forthcoming)
     pascal/       Pascal front-end pipeline (scanner → codegen)
     runtime/      Host-agnostic runtime pieces (later milestones)
     tools/        Command-line tools (apolloc)
