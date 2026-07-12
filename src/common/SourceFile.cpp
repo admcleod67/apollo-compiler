@@ -1,5 +1,6 @@
 #include "apollo/common/SourceFile.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 #include <utility>
@@ -81,6 +82,35 @@ std::string_view SourceFile::lineText(std::size_t line) const {
     }
 
     return std::string_view(text_).substr(start, end - start);
+}
+
+std::size_t SourceFile::lineStartOffset(std::size_t line) const noexcept {
+    if (line == 0 || line > lineStarts_.size()) {
+        return std::string::npos;
+    }
+    return lineStarts_[line - 1];
+}
+
+SourceLocation SourceFile::locationAt(std::size_t offset) const {
+    if (text_.empty()) {
+        return SourceLocation{1, 1, 0};
+    }
+
+    if (offset > text_.size()) {
+        offset = text_.size();
+    }
+
+    // Greatest lineStarts_[i] <= offset.
+    const auto it = std::upper_bound(lineStarts_.begin(), lineStarts_.end(), offset);
+    const auto index = static_cast<std::size_t>(it - lineStarts_.begin());
+    const std::size_t lineIndex = index == 0 ? 0 : index - 1;
+    const std::size_t start = lineStarts_[lineIndex];
+
+    return SourceLocation{
+        lineIndex + 1,
+        offset - start + 1,
+        offset,
+    };
 }
 
 } // namespace apollo::common

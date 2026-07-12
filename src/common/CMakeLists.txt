@@ -2,6 +2,7 @@ add_library(apollo-common
     Version.cpp
     SourceFile.cpp
     Listing.cpp
+    DiagnosticEngine.cpp
 )
 
 add_library(apollo::common ALIAS apollo-common)

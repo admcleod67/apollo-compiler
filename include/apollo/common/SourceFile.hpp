@@ -13,6 +13,8 @@
 #include <string_view>
 #include <vector>
 
+#include "apollo/common/SourceLocation.hpp"
+
 namespace apollo::common {
 
 /// Owns the full text of one compilation unit plus a display path.
@@ -29,6 +31,14 @@ public:
 
     /// 1-based line index. Returns empty view if out of range.
     [[nodiscard]] std::string_view lineText(std::size_t line) const;
+
+    /// 1-based line -> byte offset of the first character of that line, or
+    /// std::string::npos if invalid.
+    [[nodiscard]] std::size_t lineStartOffset(std::size_t line) const noexcept;
+
+    /// Map a 0-based byte offset to line/column. Offsets past text().size() clamp to EOF.
+    /// Columns count bytes (tab = 1 column). Empty file -> {1, 1, 0}.
+    [[nodiscard]] SourceLocation locationAt(std::size_t offset) const;
 
 private:
     SourceFile(std::string path, std::string text, std::vector<std::size_t> lineStarts);

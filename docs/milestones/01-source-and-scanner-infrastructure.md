@@ -107,12 +107,12 @@ numbering scheme** — listing and locations must agree.
 
 **Acceptance criteria**
 
-- [ ] In-memory and path-loaded sources agree on line/column for the same text.
-- [ ] CRLF fixtures map to the same line numbers as LF-normalized equivalents.
-- [ ] Diagnostic rendering always includes path, line, column, severity, and message.
-- [ ] Stage 1 `--list` still works and uses the same line numbers as locations.
+- [x] In-memory and path-loaded sources agree on line/column for the same text.
+- [x] CRLF fixtures map to the same line numbers as LF-normalized equivalents.
+- [x] Diagnostic rendering always includes path, line, column, severity, and message.
+- [x] Stage 1 `--list` still works and uses the same line numbers as locations.
 
-**Status:** planned.
+**Status:** completed.
 
 ### Stage 3 — Pascal tokens & scanner (M1c)
 
@@ -325,7 +325,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Source & listing utility (first executable) | completed |
-| Stage 2 — Locations & diagnostics | planned |
+| Stage 2 — Locations & diagnostics | completed |
 | Stage 3 — Pascal scanner | planned |
 | Stage 4 — Improved listing, `--tokens`, close-out | planned |
 
