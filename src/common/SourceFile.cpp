@@ -36,7 +36,7 @@ std::vector<std::size_t> SourceFile::buildLineStarts(std::string_view text) {
 
 SourceFile SourceFile::fromString(std::string displayPath, std::string text) {
     auto starts = buildLineStarts(text);
-    return SourceFile(std::move(displayPath), std::move(text), std::move(starts));
+    return {std::move(displayPath), std::move(text), std::move(starts)};
 }
 
 SourceFileLoadResult loadSourceFile(std::string_view path) {

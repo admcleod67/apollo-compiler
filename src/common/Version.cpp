@@ -3,7 +3,7 @@
 namespace apollo::common {
 
 const char *versionString() noexcept {
-    return "0.1.0-dev";
+    return APOLLO_VERSION;
 }
 
 } // namespace apollo::common
