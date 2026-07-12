@@ -11,195 +11,343 @@ It complements:
 - [Project milestones](../milestones.md) (Milestone 1 scope)
 - [Overview](../overview.md) (pipeline and architectural principles)
 
-### Purpose
+### Goals
 
-Milestone 1 establishes the first usable compiler substrate. After M1, Apollo can load
-Pascal source, tokenize it, report diagnostics with locations, and produce a Mak-style
-program listing — without yet parsing into an AST.
+- Follow the Mak-style build-up: the **first executable capability** is a source
+  **listing utility**, then thicken shared infrastructure, then add the scanner.
+- Establish a usable compiler substrate: load Pascal source, print numbered listings,
+  tokenize with diagnostics, and dump tokens — without yet parsing into an AST.
+- Keep shared infrastructure in `apollo-common` so later front-ends reuse source and
+  diagnostic types without depending on Pascal.
+- Leave the parser (Milestone 2) a clean consumer of an immutable token stream — no
+  rescanning of source text.
 
-This is the minimum structural step needed before the recursive-descent parser (Milestone 2).
+**Release note:** Completing Milestone 1 is the intended checkpoint for the first tagged
+release (`v0.1.0`). Until then the toolchain reports `0.1.0-dev`.
 
-**Release note:** Completing M1 is the intended checkpoint for the first tagged release
-(`v0.1.0`). Until then, the in-tree version remains `0.1.0-dev`.
+### Milestone slices (summary)
 
-### Milestone slices (delivery order)
+| Slice | Focus |
+|-------|--------|
+| **M1a** | Source buffer + **first listing executable** (`apolloc --list`) |
+| **M1b** | Locations/ranges + diagnostic engine (on the same source model) |
+| **M1c** | Pascal `TokenKind` / `Token` / scanner / token stream |
+| **M1d** | Improved listing + `--tokens`, examples, M1 close-out |
 
-- **M1a — Source + diagnostics:** Source buffer, source locations, and a diagnostic
-  collector shared by later phases.
-- **M1b — Pascal tokens + scanner:** Token kinds, token stream, and a Pascal scanner
-  (identifiers, literals, operators, comments, whitespace).
-- **M1c — Listing + driver wiring:** Program listing utility and `apolloc` options to
-  list / dump tokens for a source file.
+Detailed staged delivery is below. Slices map 1:1 to Stages 1–4.
 
-### M1a — Source + diagnostics
+**Method note:** In *Writing Compilers and Interpreters*, the first executable is the
+listing utility. Apollo mirrors that ordering with original code: a simple list-first
+cut, then an improved listing once the scanner exists.
 
-#### Source abstraction
+---
 
-Introduce a host-agnostic source model under `apollo-common` (headers under
-`include/apollo/common/`, implementation under `src/common/`):
+## Staged delivery plan
 
-- **`SourceFile`** (name TBD if a thinner type is preferred): owns or views the full
-  source text for one compilation unit, plus a display path/name for diagnostics.
-- **`SourceLocation`:** 1-based line and column (and optionally a byte offset) into a
-  known source.
-- **`SourceRange`:** start/end locations for tokens and later AST nodes.
+Work lands in four mergeable stages. Each stage should leave `main` green (`cmake` build
++ `ctest`) and update the **Implementation status** section when closed.
 
-Requirements:
+### Stage 1 — Source buffer & listing utility (M1a) — first executable
 
-- Load from a filesystem path and from an in-memory string (tests).
-- Line/column mapping must be deterministic for LF and CRLF inputs.
-- No dependency on Gemini or Pick filesystem APIs.
+**Objective:** Ship the first useful `apolloc` behaviour: load a source file and print a
+numbered listing. This is the Milestone 1 “hello world” of the toolchain.
 
-#### Diagnostic subsystem
+**Deliverables**
 
-- Severity levels at least: **error**, **warning**, **note** (info optional).
-- Each diagnostic carries: severity, message, primary location (and optional related
-  ranges later).
-- A **`DiagnosticEngine`** (or equivalent collector) accumulates diagnostics for a
-  compile/list session and can render them to a stream in a stable format, e.g.:
+- Minimal `SourceFile` (or equivalent) in `apollo-common`: display path + full text;
+  construct from filesystem path and from in-memory string (for tests).
+- Line splitting that treats LF and CRLF as a single logical newline (so listing line
+  numbers stay stable across hosts).
+- Language-agnostic listing helper (library API preferred): print `NNNN: <line text>`
+  (exact width/padding is an implementation choice; keep it stable for tests).
+- `apolloc --list <file>` wired to that helper; retain `--version` / `--help`.
+- At least one example under `examples/` (e.g. a tiny `.pas` stub) suitable for
+  `--list`.
+- Unit/CLI tests: listing line count and numbering for a fixture; missing file fails
+  cleanly.
+- README documents `--list`.
 
-  `path:line:col: error: message`
+**Out of scope for Stage 1**
 
-- Scanner (and later parser) report through this API; they do not print ad hoc strings.
+- Full `SourceLocation` / column mapping (may be stubbed or deferred to Stage 2).
+- `DiagnosticEngine`.
+- Scanner / tokens.
+- `--tokens`.
 
-### M1b — Pascal tokens + scanner
+**Acceptance criteria**
 
-#### Token model
+- [ ] `apolloc --list examples/...` prints every source line with 1-based numbers.
+- [ ] In-memory and path-loaded text produce the same listing for the same contents.
+- [ ] CRLF fixtures list with the same line count as LF equivalents.
+- [ ] No Gemini / Pick filesystem dependency.
 
-- **`TokenKind`:** enumerates Pascal lexical categories needed for a useful first
-  subset (keywords, identifiers, integer/real/string/char literals, punctuation,
-  operators, end-of-file, and an invalid/error kind if useful).
-- **`Token`:** kind, lexeme (or sourced span), and `SourceRange`.
-- **`TokenStream`:** ordered sequence of tokens produced by one scan of a source file
-  (random-access or cursor-based is an implementation choice; the parser will consume
-  it in Milestone 2).
+**Status:** planned.
 
-Exact Pascal dialect (ISO 7185 subset vs Turbo-style extensions) need not be finalized
-in M1, but the scanner should document which keywords and literal forms it accepts and
-reject or flag unknowns consistently.
+### Stage 2 — Locations & diagnostics (M1b)
 
-#### Scanner responsibilities
+**Objective:** Thicken the Stage 1 source model so later phases (scanner, improved
+listing, parser) share one location and diagnostic story. **Do not invent a second line
+numbering scheme** — listing and locations must agree.
 
-- Skip whitespace and comments (`{ ... }`, `(* ... *)`; decide whether `//` is in or
-  out of scope and document it).
-- Recognize identifiers and keywords (case-insensitive per classic Pascal, unless a
-  deliberate dialect choice says otherwise — document the choice).
-- Recognize numeric and string/character literals with clear error recovery on
-  malformed literals (emit a diagnostic, produce an error token or skip to a sync
-  point).
-- Never throw for ordinary lexical errors; prefer diagnostics + continued scanning
-  where recovery is cheap.
+**Deliverables**
 
-Implementation lives under `src/pascal/scanner/` with public headers under
-`include/apollo/pascal/` (or `include/apollo/pascal/scanner/` if subdivided).
+- `SourceLocation` / `SourceRange`: 1-based line/column; optional byte offset for
+  scanner internals.
+- Helpers such as `lineColumnAt(offset)` and `lineText(line)` on the existing
+  `SourceFile`.
+- `Diagnostic` + severity (`error`, `warning`, `note`).
+- `DiagnosticEngine` (collector): append diagnostics; query error count; render to a
+  stream in a stable format:
 
-### M1c — Listing + driver wiring
+  `path:line:col: severity: message`
 
-#### Program listing utility
+- Unit tests for mapping and diagnostic formatting.
+- Optionally re-check that `--list` line numbers still match `SourceLocation` lines
+  after the refactor.
 
-A listing tool (library API used by `apolloc`, and optionally a thin dedicated binary
-later) prints a numbered source listing suitable for teaching/debugging workflows:
+**Acceptance criteria**
 
-- Line numbers aligned with `SourceLocation` line numbers.
-- Optional annotation of the current token stream (e.g. dump tokens after the listing,
-  or interleave — pick one and document it).
+- [ ] In-memory and path-loaded sources agree on line/column for the same text.
+- [ ] CRLF fixtures map to the same line numbers as LF-normalized equivalents.
+- [ ] Diagnostic rendering always includes path, line, column, severity, and message.
+- [ ] Stage 1 `--list` still works and uses the same line numbers as locations.
 
-This follows the conceptual role of a source listing in Mak-style compiler front ends;
-the implementation is original Apollo code.
+**Status:** planned.
 
-#### `apolloc` surface (minimum)
+### Stage 3 — Pascal tokens & scanner (M1c)
 
-Extend the driver beyond `--version` / `--help`, for example:
+**Objective:** Lex a single Pascal compilation unit into a complete token stream with
+diagnostics on lexical errors.
 
-- `apolloc --list <file>` — print numbered listing
-- `apolloc --tokens <file>` — scan and dump token stream
-- Exit non-zero if errors were reported during scan
+**Deliverables**
 
-Exact flag names may vary; keep them stable once merged and document them in the
-README or a short tools note.
+- Public Pascal headers under `include/apollo/pascal/` (scanner types at minimum).
+- Implementation under `src/pascal/scanner/`.
+- CMake target `apollo-pascal` (static lib) depending on `apollo::common`.
+- `TokenKind`, `Token` (kind + range + lexeme or span into `SourceFile`), `TokenStream`.
+- `Scanner` / `scan(SourceFile&, DiagnosticEngine&) -> TokenStream` API (names flexible).
+- Keyword table for the initial subset (see **Initial Pascal lexical subset**).
+- Comment handling: `{ ... }` and `(* ... *)` (nested comments out of scope).
+- Whitespace skipping; identifiers vs keywords; integer / real / string / char literals;
+  punctuation and multi-character operators (`:=`, `<>`, `<=`, `>=`, `..`).
+- Lexical error recovery: diagnose and continue where cheap (unclosed string/comment,
+  bad numeric forms); do not abort the process.
+- Unit tests covering happy path and recovery cases.
+- Short in-tree note of accepted lexical rules (section in this file is enough for M1;
+  split to `docs/pascal-language.md` only if it grows unwieldy).
 
-### Scope and non-goals
+**Design decisions for Stage 3 (defaults unless revisited)**
 
-#### In scope (M1)
+| Topic | Default for M1 |
+|-------|----------------|
+| Identifier / keyword case | Case-insensitive matching; preserve original lexeme spelling in the token |
+| `//` line comments | **Out of scope** (not classic Pascal); reject or treat `/` as operator only |
+| Nested `{` / `(*` comments | **Out of scope**; first closer wins; document if nesting is detected as error |
+| String quotes | Single-quoted Pascal strings; `''` as embedded quote |
+| Character literals | Single-quoted length-1 (or documented Pascal char form); keep rules explicit in tests |
+| Real literals | Digit sequences with `.` and optional exponent (`E`/`e`) |
+| Hex / binary literals | **Out of scope** unless needed for a tiny fixture — defer |
+| Dollar / compiler directives | **Out of scope** |
 
-- Shared source buffer / location / range types.
-- Diagnostic collection and stable console rendering.
-- Pascal scanner + token stream for an initial lexical subset.
-- Program listing and driver options to exercise source + scanner.
-- Unit tests for locations, diagnostics, and scanner cases.
+**Acceptance criteria**
+
+- [ ] Scanning a small well-formed `.pas` fixture yields a stable, ordered token list ending in EOF.
+- [ ] Keywords are distinguished from identifiers under case folding (`Begin` → keyword).
+- [ ] `{ }` and `(* *)` comments produce no tokens.
+- [ ] Malformed string / unclosed comment emit diagnostics and still return a stream (no crash).
+- [ ] `apollo-pascal` links in tests without pulling Gemini.
+
+**Status:** planned.
+
+### Stage 4 — Improved listing, token dump & Milestone 1 close-out (M1d)
+
+**Objective:** Upgrade the Stage 1 listing/driver surface now that diagnostics and the
+scanner exist, then close M1 for `v0.1.0`.
+
+**Deliverables**
+
+- `apolloc --tokens <file>` — load, scan, dump tokens (one token per line; include kind
+  + location; include lexeme when useful).
+- Exit status policy: non-zero if any **error**-severity diagnostics were produced
+  (warnings do not fail the process unless documented otherwise). Apply consistently to
+  `--tokens` (and to `--list` only if listing itself can report errors, e.g. I/O).
+- Optional listing improvements (pick what is worth doing before tag):
+
+  - ensure listing line numbers are proven identical to scanner `SourceLocation` lines
+  - optional header/footer (path, line count) — stretch
+  - do **not** require interleaving tokens into the listing for M1
+
+- Tests for `--tokens` exit codes on clean vs erroneous input; listing/location parity
+  regression if not already covered.
+- README documents `--list` and `--tokens`.
+- Update this document’s **Implementation status** to closed; bump version string from
+  `0.1.0-dev` to `0.1.0` when tagging (tagging itself is a release step, not a code stage).
+
+**Token dump format (suggested)**
+
+```text
+1:1-1:7    KeywordProgram    program
+1:8-1:8    Identifier        Hello
+...
+N:M-N:M    EndOfFile
+```
+
+Stable enough for golden tests; refine if needed before tag.
+
+**Acceptance criteria**
+
+- [ ] `apolloc --list` still works (Stage 1 behaviour preserved or intentionally improved).
+- [ ] `apolloc --tokens` on a clean file exits 0 and dumps EOF-terminated tokens.
+- [ ] `apolloc --tokens` on a fixture with a lexical error exits non-zero and prints
+      diagnostics to stderr (or a documented stream).
+- [ ] README documents both flags.
+- [ ] All Stage 1–4 tests pass under `ctest`.
+
+**Status:** planned.
+
+### Suggested staging cadence
+
+1. **Stage 1** — source buffer + `--list` (first executable, Mak-style).
+2. **Stage 2** — locations + diagnostics on that same source model.
+3. **Stage 3** — `apollo-pascal` scanner + tests (driver token dump not required yet).
+4. **Stage 4** — `--tokens`, exit-on-error, polish, tag `v0.1.0`.
+
+Do not start Milestone 2 parser work on `main` until Stage 3’s token stream API is
+stable enough to consume (Stage 4 may still be in flight if the API is already frozen).
+
+---
+
+## Initial Pascal lexical subset
+
+The scanner should recognize at least the following for M1 (expand later as the parser
+needs more):
+
+**Keywords (illustrative minimum):**  
+`and`, `array`, `begin`, `case`, `const`, `div`, `do`, `downto`, `else`, `end`,
+`file`, `for`, `function`, `goto`, `if`, `in`, `label`, `mod`, `nil`, `not`, `of`,
+`or`, `packed`, `procedure`, `program`, `record`, `repeat`, `set`, `then`, `to`,
+`type`, `until`, `var`, `while`, `with`.
+
+Add `xor` / Turbo extensions only if deliberately chosen; default is classic-leaning
+subset. Document any extras in this file when added.
+
+**Punctuation / operators:**  
+`+` `-` `*` `/` `=` `<` `>` `[` `]` `.` `,` `:` `;` `(` `)` `^` `@`  
+`:=` `<>` `<=` `>=` `..`
+
+**Literals:** integer, real, string, character (as decided in Stage 3 table).
+
+---
+
+## Scope and non-goals
+
+### In scope (M1)
+
+- Source buffer and the first listing executable (`apolloc --list`).
+- Shared location / range types and diagnostic collection.
+- Pascal scanner + token stream for the initial lexical subset.
+- Improved driver surface (`--tokens`, exit-on-error) at close-out.
+- Unit and smoke tests for Stages 1–4.
 - Documentation of accepted Pascal lexical rules for this milestone.
 
-#### Deferred (not in this document's implementation scope)
+### Deferred (not in this milestone)
 
 - Recursive-descent parser and AST (Milestone 2).
-- Symbol tables beyond what the scanner needs (none).
+- Symbol tables (Milestone 2+).
 - Semantic analysis, IR, and codegen (Milestones 3–5).
-- Full ISO/Turbo Pascal fidelity (expand incrementally with later milestones).
-- Linking against Gemini PickVM or emitting `.tbc` (still prefer text `.tbc` later;
-  not required for M1).
-- Preprocessor / include-file resolution beyond a single source file (unless a
-  minimal include proves necessary — default is single-file units).
+- Full ISO 7185 / Turbo Pascal fidelity.
+- Include/`{$I}` / multi-file units.
+- Linking against Gemini PickVM or emitting `.tbc`.
+- Pretty-printed diagnostic snippets / carets (stretch; plain `path:line:col` is enough).
+- Token-annotated / interleaved source listings (optional stretch only).
 
-### Data model (target shapes)
+---
+
+## Data model (target shapes)
 
 These are design targets, not frozen APIs. Names may adjust during implementation.
 
-#### `SourceFile`
+### `SourceFile`
 
 - `path` / display name
 - full text (`std::string` or string view over owned storage)
-- helpers: `lineColumnAt(offset)`, `lineText(line)`
+- Stage 1: enough to list lines
+- Stage 2+: helpers `lineColumnAt(offset)`, `lineText(line)`
 
-#### `SourceLocation` / `SourceRange`
+### `SourceLocation` / `SourceRange`
 
+- Introduced in Stage 2
 - 1-based line and column for human diagnostics
 - optional absolute offset for efficient scanner use
 
-#### `Diagnostic`
+### `Diagnostic`
 
+- Introduced in Stage 2
 - severity, message, primary location
-- optional source snippet attachment later (stretch)
+- related ranges deferred
 
-#### `Token` / `TokenKind` / `TokenStream`
+### `Token` / `TokenKind` / `TokenStream`
 
+- Introduced in Stage 3
 - tokens reference ranges into the owning `SourceFile`
 - EOF token terminates the stream
+- stream is suitable for lookahead in Milestone 2 (index or cursor with peek)
 
-### Component layout
+---
+
+## Component layout
 
 | Area | Location |
 |------|----------|
-| Source + diagnostics | `include/apollo/common/`, `src/common/` |
-| Pascal scanner | `include/apollo/pascal/`, `src/pascal/scanner/` |
-| Listing helper | `src/common/` or `src/tools/` (library preferred) |
-| Driver | `src/tools/apolloc.cpp` |
-| Tests | `tests/` (scanner, locations, diagnostics, listing) |
-| Examples | `examples/` (small `.pas` files for manual runs) |
+| Source (+ later diagnostics) | `include/apollo/common/`, `src/common/` |
+| Listing helper | `src/common/` preferred (language-agnostic); used from Stage 1 |
+| Pascal scanner | `include/apollo/pascal/`, `src/pascal/scanner/` (Stage 3) |
+| Pascal CMake target | `src/pascal/` → `apollo-pascal` / `apollo::pascal` |
+| Driver | `src/tools/apolloc.cpp` (`--list` in Stage 1; `--tokens` in Stage 4) |
+| Tests | `tests/` (listing, source, diagnostics, scanner; optional CLI tests) |
+| Examples | `examples/*.pas` (from Stage 1) |
 
-### Test matrix
+---
 
-Minimum expected tests for this milestone:
+## Test matrix
 
-- Source load from string and path; LF / CRLF line mapping.
-- Diagnostic formatting includes path, line, and column.
-- Scanner: keywords vs identifiers; integer/real/string/char literals; operators;
-  `{ }` and `(* *)` comments.
-- Scanner recovery: unclosed string / comment produces diagnostics and does not crash.
-- Listing: line numbers match `SourceLocation` lines for a fixture file.
-- `apolloc --tokens` (or equivalent) exits non-zero when lexical errors exist.
+| Stage | Minimum coverage |
+|-------|------------------|
+| 1 | Path/string load; LF vs CRLF listing; `apolloc --list` smoke |
+| 2 | Line/column mapping; diagnostic render shape; list/location parity |
+| 3 | Keywords vs identifiers; literals; operators; both comment forms; unclosed string/comment recovery |
+| 4 | `--tokens` exit 0 / non-zero; help/README mention both flags |
 
-### Implementation status
+---
 
-**Not started.** Milestone 0 provides the repository skeleton, `apollo-common` version
-stub, and `apolloc` `--version` / `--help` only.
+## Implementation status
 
-As slices land, update this section (M1a / M1b / M1c) in the same way Gemini records
-delivery status on active milestone docs.
+| Stage | Status |
+|-------|--------|
+| Stage 1 — Source & listing utility (first executable) | planned |
+| Stage 2 — Locations & diagnostics | planned |
+| Stage 3 — Pascal scanner | planned |
+| Stage 4 — Improved listing, `--tokens`, close-out | planned |
 
-### Migration / follow-on notes
+Milestone 0 provides the repository skeleton, `apollo-common` version stub, and
+`apolloc` `--version` / `--help` only.
 
-- Keep lexical rules documented here or in a dedicated `pascal-language.md` once the
-  subset is large enough to deserve its own page.
-- Parser (M2) should consume the M1 token stream without rescanning.
-- Do not special-case Gemini paths in `common`; host I/O stays ordinary filesystem /
-  memory buffers in M1.
+---
+
+## Definition of done (Milestone 1 / `v0.1.0`)
+
+- Stages 1–4 acceptance criteria checked off.
+- `ctest` green on a clean configure/build.
+- README documents `apolloc --list` and `--tokens`.
+- This status table marked completed.
+- Git tag `v0.1.0` cut from that revision (version string without `-dev`).
+
+---
+
+## Migration / follow-on notes
+
+- Parser (M2) consumes the Stage 3 token stream without rescanning.
+- Keep Gemini out of `common` and out of the Pascal scanner; host I/O is ordinary
+  filesystem / memory buffers.
+- When lexical rules outgrow this page, split to `docs/pascal-language.md` and link it
+  from here.
