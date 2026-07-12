@@ -22,8 +22,9 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 ## Status
 
-**Milestone 0 — Project skeleton** is in progress: repository layout, CMake build, shared
-support library stub, and roadmap documentation.
+**Milestone 0 — Project skeleton** is complete. **Milestone 1 — Source & scanner
+infrastructure** is current; see
+[`docs/milestones/01-source-and-scanner-infrastructure.md`](docs/milestones/01-source-and-scanner-infrastructure.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
