@@ -1,6 +1,9 @@
+#include "apollo/common/DiagnosticEngine.hpp"
 #include "apollo/common/Listing.hpp"
 #include "apollo/common/SourceFile.hpp"
 #include "apollo/common/Version.hpp"
+#include "apollo/pascal/Scanner.hpp"
+#include "apollo/pascal/TokenDump.hpp"
 
 #include <iostream>
 #include <string_view>
@@ -8,14 +11,15 @@
 namespace {
 
 void printUsage(std::ostream &out) {
-    out << "Usage: apolloc [--version] [--help] [--list <file>]\n"
+    out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>]\n"
         << "\n"
         << "Apollo Compiler — multi-language toolchain for the Gemini VM.\n"
         << "\n"
         << "Options:\n"
-        << "  -h, --help       Show this help\n"
-        << "  -v, --version    Show version\n"
-        << "  -l, --list FILE  Print a numbered source listing\n";
+        << "  -h, --help         Show this help\n"
+        << "  -v, --version      Show version\n"
+        << "  -l, --list FILE    Print a numbered source listing\n"
+        << "  -t, --tokens FILE  Scan Pascal source and dump the token stream\n";
 }
 
 int listFile(std::string_view path) {
@@ -26,6 +30,20 @@ int listFile(std::string_view path) {
     }
     apollo::common::writeListing(std::cout, *loaded.file);
     return 0;
+}
+
+int tokensFile(std::string_view path) {
+    const auto loaded = apollo::common::loadSourceFile(path);
+    if (!loaded.file) {
+        std::cerr << "apolloc: " << loaded.error << '\n';
+        return 1;
+    }
+
+    apollo::common::DiagnosticEngine diagnostics(*loaded.file);
+    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
+    diagnostics.write(std::cerr);
+    apollo::pascal::writeTokenDump(std::cout, stream);
+    return diagnostics.errorCount() == 0 ? 0 : 1;
 }
 
 } // namespace
@@ -52,6 +70,14 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return listFile(argv[2]);
+    }
+    if (arg == "--tokens" || arg == "-t") {
+        if (argc < 3) {
+            std::cerr << "apolloc: --tokens requires a file path\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+        return tokensFile(argv[2]);
     }
 
     std::cerr << "apolloc: unknown option: " << arg << '\n';

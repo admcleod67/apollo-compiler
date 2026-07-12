@@ -1,5 +1,6 @@
 add_library(apollo-pascal
     scanner/Scanner.cpp
+    TokenDump.cpp
 )
 
 add_library(apollo::pascal ALIAS apollo-pascal)

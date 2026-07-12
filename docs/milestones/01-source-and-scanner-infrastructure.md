@@ -1,6 +1,6 @@
 ← [Project milestones index](../milestones.md)
 
-## Milestone 1 — Source & scanner infrastructure (current)
+## Milestone 1 — Source & scanner infrastructure (completed)
 
 This document defines the **Milestone 1** source and scanner infrastructure for Apollo:
 a shared source abstraction and diagnostic subsystem, a Pascal scanner and token stream,
@@ -22,8 +22,9 @@ It complements:
 - Leave the parser (Milestone 2) a clean consumer of an immutable token stream — no
   rescanning of source text.
 
-**Release note:** Completing Milestone 1 is the intended checkpoint for the first tagged
-release (`v0.1.0`). Until then the toolchain reports `0.1.0-dev`.
+**Release note:** Milestone 1 is complete and ready for the first tagged release
+(`v0.1.0`). Until that tag is cut, the toolchain still reports `0.1.0-dev`
+(`${PROJECT_VERSION}-dev` from CMake). Drop the `-dev` suffix when tagging.
 
 ### Milestone slices (summary)
 
@@ -196,14 +197,14 @@ Stable enough for golden tests; refine if needed before tag.
 
 **Acceptance criteria**
 
-- [ ] `apolloc --list` still works (Stage 1 behaviour preserved or intentionally improved).
-- [ ] `apolloc --tokens` on a clean file exits 0 and dumps EOF-terminated tokens.
-- [ ] `apolloc --tokens` on a fixture with a lexical error exits non-zero and prints
+- [x] `apolloc --list` still works (Stage 1 behaviour preserved or intentionally improved).
+- [x] `apolloc --tokens` on a clean file exits 0 and dumps EOF-terminated tokens.
+- [x] `apolloc --tokens` on a fixture with a lexical error exits non-zero and prints
       diagnostics to stderr (or a documented stream).
-- [ ] README documents both flags.
-- [ ] All Stage 1–4 tests pass under `ctest`.
+- [x] README documents both flags.
+- [x] All Stage 1–4 tests pass under `ctest`.
 
-**Status:** planned.
+**Status:** completed.
 
 ### Suggested staging cadence
 
@@ -327,20 +328,20 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 | Stage 1 — Source & listing utility (first executable) | completed |
 | Stage 2 — Locations & diagnostics | completed |
 | Stage 3 — Pascal scanner | completed |
-| Stage 4 — Improved listing, `--tokens`, close-out | planned |
+| Stage 4 — Improved listing, `--tokens`, close-out | completed |
 
-Milestone 0 provides the repository skeleton, `apollo-common` version stub, and
-`apolloc` `--version` / `--help` only.
+Milestone 1 Stages 1–4 are implemented. Tag `v0.1.0` (and drop `-dev` from the
+version string) as a separate release step.
 
 ---
 
 ## Definition of done (Milestone 1 / `v0.1.0`)
 
-- Stages 1–4 acceptance criteria checked off.
-- `ctest` green on a clean configure/build.
-- README documents `apolloc --list` and `--tokens`.
-- This status table marked completed.
-- Git tag `v0.1.0` cut from that revision (version string without `-dev`).
+- [x] Stages 1–4 acceptance criteria checked off.
+- [x] `ctest` green on a clean configure/build.
+- [x] README documents `apolloc --list` and `--tokens`.
+- [x] This status table marked completed.
+- [ ] Git tag `v0.1.0` cut from that revision (version string without `-dev`) — release follow-up.
 
 ---
 

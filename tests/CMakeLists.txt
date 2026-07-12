@@ -42,10 +42,22 @@ target_link_libraries(apollo_pascal_scanner_test
 
 target_compile_features(apollo_pascal_scanner_test PRIVATE cxx_std_20)
 
+add_executable(apollo_token_dump_test
+    token_dump_test.cpp
+)
+
+target_link_libraries(apollo_token_dump_test
+    PRIVATE
+        apollo::pascal
+)
+
+target_compile_features(apollo_token_dump_test PRIVATE cxx_std_20)
+
 add_test(NAME apollo_smoke_test COMMAND apollo_smoke_test)
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apollo_location_diagnostics_test COMMAND apollo_location_diagnostics_test)
 add_test(NAME apollo_pascal_scanner_test COMMAND apollo_pascal_scanner_test)
+add_test(NAME apollo_token_dump_test COMMAND apollo_token_dump_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
 
 add_test(
@@ -57,3 +69,15 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --list ${CMAKE_SOURCE_DIR}/tests/fixtures/does-not-exist.pas
 )
 set_tests_properties(apolloc_list_missing PROPERTIES WILL_FAIL TRUE)
+
+add_test(
+    NAME apolloc_tokens_hello
+    COMMAND $<TARGET_FILE:apolloc> --tokens ${CMAKE_SOURCE_DIR}/tests/fixtures/scan_hello.pas
+)
+set_tests_properties(apolloc_tokens_hello PROPERTIES PASS_REGULAR_EXPRESSION "KeywordProgram")
+
+add_test(
+    NAME apolloc_tokens_error
+    COMMAND $<TARGET_FILE:apolloc> --tokens ${CMAKE_SOURCE_DIR}/tests/fixtures/tokens_error.pas
+)
+set_tests_properties(apolloc_tokens_error PROPERTIES WILL_FAIL TRUE)

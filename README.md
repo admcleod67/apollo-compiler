@@ -22,9 +22,9 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 ## Status
 
-**Milestone 0 — Project skeleton** is complete. **Milestone 1 — Source & scanner
-infrastructure** is current; see
-[`docs/milestones/01-source-and-scanner-infrastructure.md`](docs/milestones/01-source-and-scanner-infrastructure.md).
+**Milestone 1 — Source & scanner infrastructure** is complete (ready to tag `v0.1.0`;
+the tree still reports `0.1.0-dev` until that release). Next up is
+[Milestone 2 — Parser](docs/milestones/02-parser.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -40,8 +40,9 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--version`, `--help`)
-- **`apollo-common`** — shared compiler support library (source buffer + listing)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--version`, `--help`)
+- **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
+- **`apollo-pascal`** — Pascal scanner and token dump helpers
 
 ### Listing a source file
 
@@ -58,6 +59,15 @@ Prints a numbered listing (width-4 line numbers), for example:
    4: end.
 ```
 
+### Dumping tokens
+
+```bash
+./build/src/tools/apolloc --tokens examples/hello.pas
+```
+
+Scans Pascal source and prints one token per line (`line:col-endLine:endCol  Kind  lexeme`).
+Lexical errors go to stderr; the process exits non-zero if any errors were reported.
+
 ## Layout
 
 ```
@@ -65,7 +75,7 @@ apollo-compiler/
   docs/           Project overview and milestones
   include/apollo/ Public headers
   src/
-    common/       Shared support (source buffer, listing; diagnostics forthcoming)
+    common/       Shared support (source, listing, diagnostics)
     pascal/       Pascal front-end pipeline (scanner → codegen)
     runtime/      Host-agnostic runtime pieces (later milestones)
     tools/        Command-line tools (apolloc)

@@ -66,5 +66,6 @@ text from the book is used directly; only the conceptual methodology informs the
 ## See also
 
 - [Milestones](milestones.md) — roadmap index
-- [Milestone 1 — Source & scanner](milestones/01-source-and-scanner-infrastructure.md) — current milestone design
+- [Milestone 1 — Source & scanner](milestones/01-source-and-scanner-infrastructure.md) — completed (M1)
+- [Milestone 2 — Parser](milestones/02-parser.md) — next
 - Gemini VM documentation: `gemini-system/docs/vm.md` (sibling repository)
