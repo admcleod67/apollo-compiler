@@ -7,9 +7,9 @@
 
 #pragma once
 
-// Overridden from CMake via APOLLO_VERSION (PROJECT_VERSION, usually with a -dev suffix).
+// Overridden from CMake via APOLLO_VERSION (= PROJECT_VERSION).
 #ifndef APOLLO_VERSION
-#define APOLLO_VERSION "0.0.0-dev"
+#define APOLLO_VERSION "0.0.0"
 #endif
 
 namespace apollo::common {

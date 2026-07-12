@@ -22,8 +22,8 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 ## Status
 
-**Milestone 1 — Source & scanner infrastructure** is complete (ready to tag `v0.1.0`;
-the tree still reports `0.1.0-dev` until that release). Next up is
+**Milestone 1 — Source & scanner infrastructure** is complete. The toolchain reports
+`0.1.0` (`PROJECT_VERSION`); cut git tag `v0.1.0` when ready. Next up is
 [Milestone 2 — Parser](docs/milestones/02-parser.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.

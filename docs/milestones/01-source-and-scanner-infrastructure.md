@@ -1,4 +1,4 @@
-← [Project milestones index](../milestones.md)
+ bhb← [Project milestones index](../milestones.md)
 
 ## Milestone 1 — Source & scanner infrastructure (completed)
 
@@ -22,9 +22,8 @@ It complements:
 - Leave the parser (Milestone 2) a clean consumer of an immutable token stream — no
   rescanning of source text.
 
-**Release note:** Milestone 1 is complete and ready for the first tagged release
-(`v0.1.0`). Until that tag is cut, the toolchain still reports `0.1.0-dev`
-(`${PROJECT_VERSION}-dev` from CMake). Drop the `-dev` suffix when tagging.
+**Release note:** Milestone 1 is complete. The toolchain reports `0.1.0`
+(`${PROJECT_VERSION}` from CMake). Cut git tag `v0.1.0` when ready.
 
 ### Milestone slices (summary)
 
@@ -181,8 +180,8 @@ scanner exist, then close M1 for `v0.1.0`.
 - Tests for `--tokens` exit codes on clean vs erroneous input; listing/location parity
   regression if not already covered.
 - README documents `--list` and `--tokens`.
-- Update this document’s **Implementation status** to closed; bump version string from
-  `0.1.0-dev` to `0.1.0` when tagging (tagging itself is a release step, not a code stage).
+- Update this document’s **Implementation status** to closed; set the reported version
+  string to `0.1.0` (done). Cutting git tag `v0.1.0` remains a separate release step.
 
 **Token dump format (suggested)**
 
@@ -330,8 +329,8 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 | Stage 3 — Pascal scanner | completed |
 | Stage 4 — Improved listing, `--tokens`, close-out | completed |
 
-Milestone 1 Stages 1–4 are implemented. Tag `v0.1.0` (and drop `-dev` from the
-version string) as a separate release step.
+Milestone 1 Stages 1–4 are implemented. The version string is `0.1.0`. Cut git tag
+`v0.1.0` as a separate release step.
 
 ---
 
@@ -341,7 +340,8 @@ version string) as a separate release step.
 - [x] `ctest` green on a clean configure/build.
 - [x] README documents `apolloc --list` and `--tokens`.
 - [x] This status table marked completed.
-- [ ] Git tag `v0.1.0` cut from that revision (version string without `-dev`) — release follow-up.
+- [x] Version string reports `0.1.0` (no `-dev` suffix).
+- [ ] Git tag `v0.1.0` cut from that revision — release follow-up.
 
 ---
 

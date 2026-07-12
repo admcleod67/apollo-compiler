@@ -15,8 +15,7 @@ target_include_directories(apollo-common
 target_compile_features(apollo-common PUBLIC cxx_std_20)
 
 # Single source of truth: project() VERSION in the top-level CMakeLists.txt.
-# Keep the -dev suffix until the first tagged release (v0.1.0 / Milestone 1 complete).
-set(APOLLO_VERSION_STRING "${PROJECT_VERSION}-dev")
+set(APOLLO_VERSION_STRING "${PROJECT_VERSION}")
 target_compile_definitions(apollo-common
     PUBLIC "APOLLO_VERSION=\"${APOLLO_VERSION_STRING}\""
 )

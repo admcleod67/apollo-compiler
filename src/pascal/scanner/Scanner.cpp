@@ -18,34 +18,34 @@ using apollo::common::SourceFile;
 using apollo::common::SourceLocation;
 using apollo::common::SourceRange;
 
-bool isAsciiLetter(char c) {
+bool isAsciiLetter(const char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-bool isIdentStart(char c) {
+bool isIdentStart(const char c) {
     return isAsciiLetter(c) || c == '_';
 }
 
-bool isIdentContinue(char c) {
+bool isIdentContinue(const char c) {
     return isIdentStart(c) || (c >= '0' && c <= '9');
 }
 
-bool isDigit(char c) {
+bool isDigit(const char c) {
     return c >= '0' && c <= '9';
 }
 
-bool isWhitespace(char c) {
+bool isWhitespace(const char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
 }
 
-char toLowerAscii(char c) {
+char toLowerAscii(const char c) {
     if (c >= 'A' && c <= 'Z') {
         return static_cast<char>(c - 'A' + 'a');
     }
     return c;
 }
 
-std::string foldAsciiLower(std::string_view text) {
+std::string foldAsciiLower(const std::string_view text) {
     std::string out;
     out.reserve(text.size());
     for (char c : text) {
@@ -95,7 +95,7 @@ const std::unordered_map<std::string, TokenKind> &keywordTable() {
     return table;
 }
 
-TokenKind lookupKeyword(std::string_view lexeme) {
+TokenKind lookupKeyword(const std::string_view lexeme) {
     const auto folded = foldAsciiLower(lexeme);
     const auto &table = keywordTable();
     const auto it = table.find(folded);
@@ -145,17 +145,17 @@ private:
         return text_[pos_++];
     }
 
-    SourceLocation loc(std::size_t offset) const { return source_->locationAt(offset); }
+    [[nodiscard]] SourceLocation loc(const std::size_t offset) const { return source_->locationAt(offset); }
 
-    SourceRange range(std::size_t begin, std::size_t end) const {
+    [[nodiscard]] SourceRange range(const std::size_t begin, const std::size_t end) const {
         return SourceRange{loc(begin), loc(end)};
     }
 
-    Token makeToken(TokenKind kind, std::size_t begin, std::size_t end) const {
+    [[nodiscard]] Token makeToken(const TokenKind kind, const std::size_t begin, const std::size_t end) const {
         return Token{kind, range(begin, end), text_.substr(begin, end - begin)};
     }
 
-    void errorAt(std::size_t offset, std::string message) {
+    void errorAt(const std::size_t offset, std::string message) const {
         diagnostics_->report(DiagnosticSeverity::Error, loc(offset), std::move(message));
     }
 
@@ -308,9 +308,8 @@ private:
 
     std::optional<Token> scanOperatorOrPunct() {
         const std::size_t begin = pos_;
-        const char c = advance();
 
-        switch (c) {
+        switch (advance()) {
         case '+':
             return makeToken(TokenKind::Plus, begin, pos_);
         case '-':

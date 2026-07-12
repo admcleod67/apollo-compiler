@@ -17,5 +17,5 @@ prefixes sort lexicographically).
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md)
 - [Milestone 7 — Multi-language expansion](milestones/07-multi-language-expansion.md)
 
-**Release checkpoint:** Milestone 1 is complete and ready for the first git tag
-(`v0.1.0`). Until that tag is cut, the toolchain reports `0.1.0-dev`.
+**Release checkpoint:** Milestone 1 is complete. The toolchain reports `0.1.0`; cut
+git tag `v0.1.0` when ready.

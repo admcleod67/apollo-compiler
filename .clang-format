@@ -1,0 +1,47 @@
+# Apollo Compiler — clang-format configuration
+# Tuned to keep the useful CLion style (indented namespaces, Type &name)
+# while preserving a space before range-for ':' (for (auto &x : xs)).
+
+BasedOnStyle: LLVM
+Language: Cpp
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+NamespaceIndentation: All
+AccessModifierOffset: -4
+IndentCaseLabels: false
+IndentPPDirectives: None
+
+# Pointers / references: "Type &name", "Type *name"
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+
+# Spacing
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: Never
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Line breaking
+ColumnLimit: 100
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+BreakBeforeBraces: Attach
+BreakConstructorInitializers: BeforeColon
+ConstructorInitializerIndentWidth: 4
+PackConstructorInitializers: NextLine
+AlwaysBreakTemplateDeclarations: Yes
+
+# Includes
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+
+# Misc
+ReflowComments: true
+InsertBraces: false
