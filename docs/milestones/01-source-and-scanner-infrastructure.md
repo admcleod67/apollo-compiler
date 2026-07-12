@@ -141,23 +141,23 @@ diagnostics on lexical errors.
 | Topic | Default for M1 |
 |-------|----------------|
 | Identifier / keyword case | Case-insensitive matching; preserve original lexeme spelling in the token |
-| `//` line comments | **Out of scope** (not classic Pascal); reject or treat `/` as operator only |
-| Nested `{` / `(*` comments | **Out of scope**; first closer wins; document if nesting is detected as error |
+| `//` line comments | **Out of scope** (not classic Pascal); `/` is always `Slash` |
+| Nested `{` / `(*` comments | **Out of scope**; first closer wins; unclosed → error at opener |
 | String quotes | Single-quoted Pascal strings; `''` as embedded quote |
-| Character literals | Single-quoted length-1 (or documented Pascal char form); keep rules explicit in tests |
-| Real literals | Digit sequences with `.` and optional exponent (`E`/`e`) |
+| Character literals | Single-quoted form whose **decoded** content length is 1 → `CharLiteral`; otherwise `StringLiteral` |
+| Real literals | Digits with `.` + digit, and/or `E`/`e` exponent; `1..2` is integer + `DotDot` + integer |
 | Hex / binary literals | **Out of scope** unless needed for a tiny fixture — defer |
 | Dollar / compiler directives | **Out of scope** |
 
 **Acceptance criteria**
 
-- [ ] Scanning a small well-formed `.pas` fixture yields a stable, ordered token list ending in EOF.
-- [ ] Keywords are distinguished from identifiers under case folding (`Begin` → keyword).
-- [ ] `{ }` and `(* *)` comments produce no tokens.
-- [ ] Malformed string / unclosed comment emit diagnostics and still return a stream (no crash).
-- [ ] `apollo-pascal` links in tests without pulling Gemini.
+- [x] Scanning a small well-formed `.pas` fixture yields a stable, ordered token list ending in EOF.
+- [x] Keywords are distinguished from identifiers under case folding (`Begin` → keyword).
+- [x] `{ }` and `(* *)` comments produce no tokens.
+- [x] Malformed string / unclosed comment emit diagnostics and still return a stream (no crash).
+- [x] `apollo-pascal` links in tests without pulling Gemini.
 
-**Status:** planned.
+**Status:** completed.
 
 ### Stage 4 — Improved listing, token dump & Milestone 1 close-out (M1d)
 
@@ -326,7 +326,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 |-------|--------|
 | Stage 1 — Source & listing utility (first executable) | completed |
 | Stage 2 — Locations & diagnostics | completed |
-| Stage 3 — Pascal scanner | planned |
+| Stage 3 — Pascal scanner | completed |
 | Stage 4 — Improved listing, `--tokens`, close-out | planned |
 
 Milestone 0 provides the repository skeleton, `apollo-common` version stub, and
