@@ -57,7 +57,7 @@ code is ordinary program code inside `.tbc`, not language-module entry points.
 
 | Horizon | Where the Pascal I/O module lives |
 |---------|-----------------------------------|
-| **M6 spike** | Acceptable to implement a minimal Pascal (or shared) I/O module **in gemini-system** so `gemini-vm` + hello/count can prove the path without waiting on Apollo packaging |
+| **M6 spike** | Acceptable to implement a minimal Pascal (or shared) I/O module **in gemini-system** so `gemini-vm` + hello/count can prove the path without waiting on Apollo packaging (Gemini Milestone 19 §2.5) |
 | **Steady state** | Build and ship the Pascal helper module with **apollo-compiler** (e.g. under `src/runtime/`) against Gemini’s published module ABI; install into Gemini’s module path. Gemini remains **ABI + loader**, not the catalogue of every outside language’s implementations |
 
 Rationale: keeping every front-end’s builtins forever inside gemini-system couples
@@ -137,7 +137,10 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 ## Success criteria (draft)
 
 - [ ] Review recorded: Pick vs portable boundaries for the current VM.
-- [ ] Host-only (or clearly portable) build target exists in gemini-system.
+- [ ] Host-only (or clearly portable) build target exists in gemini-system
+  (`gemini-vm` / Gemini Milestone 19).
+- [ ] Pascal I/O module available (Gemini spike **or** Apollo-built) with
+  namespace/function IDs matching Milestone 5 **`CALL_FUNC`** emission.
 - [ ] An Apollo-compiled Pascal program with console I/O only runs on that target.
 - [ ] Apollo docs / README note how to run the standalone path once available.
 
@@ -147,7 +150,7 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 
 - Filesystem library extraction in gemini-system.
 - Richer host I/O for both BASIC and future Pascal file support.
-- Move Pascal I/O module ownership to apollo-compiler if the M6 spike lived in
-  gemini-system (steady-state drop-in module).
+- Move Pascal I/O module ownership to apollo-compiler if the M6 / Gemini M19 spike
+  lived in gemini-system (steady-state drop-in module).
 - Optional later extraction of the portable runtime into a shared package/repo if
   cross-project dependency pain justifies it.
