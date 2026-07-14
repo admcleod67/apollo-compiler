@@ -35,12 +35,35 @@ scratch unless Gemini’s runtime cannot be shared cleanly.
 
 | Area | Primary home |
 |------|----------------|
-| VM core, language plugins, host FS extraction | **gemini-system** |
+| VM core, module loader / ABI, host FS extraction | **gemini-system** |
 | Emit bytecode (`.tbc` / Instruction image) | **apollo-compiler** (Milestone 5) |
+| Pascal builtin helpers (console I/O module) | See **Language modules** below |
 | Prove an Apollo Pascal program runs on the standalone target | **Both** — Gemini provides the runner; Apollo provides the program |
 
 Milestone 6 is **mostly Gemini-side**. Apollo’s success criterion is that a program it
 compiled runs on that portable target — not that Apollo owns or reimplements the VM.
+
+### Language modules (Pascal builtins)
+
+Gemini’s multi-language runtime (e.g. Milestone 11 / `CALL_FUNC` + boot-time module
+loader) is designed so **new languages do not require rebuilding the VM**. Modules are
+discovered and `dlopen`’d from a configured directory; Gemini publishes the ABI and
+namespace/function IDs. Apollo codegen emits `CALL_FUNC` for builtins against that
+contract.
+
+**v1 builtins in Apollo today** are console only: `write`, `writeln`, `read`, `readln`.
+There is no Pascal math library (`sin`, `sqrt`, …) yet. User `procedure` / `function`
+code is ordinary program code inside `.tbc`, not language-module entry points.
+
+| Horizon | Where the Pascal I/O module lives |
+|---------|-----------------------------------|
+| **M6 spike** | Acceptable to implement a minimal Pascal (or shared) I/O module **in gemini-system** so `gemini-vm` + hello/count can prove the path without waiting on Apollo packaging |
+| **Steady state** | Build and ship the Pascal helper module with **apollo-compiler** (e.g. under `src/runtime/`) against Gemini’s published module ABI; install into Gemini’s module path. Gemini remains **ABI + loader**, not the catalogue of every outside language’s implementations |
+
+Rationale: keeping every front-end’s builtins forever inside gemini-system couples
+releases and makes external languages second-class. Drop-in modules keep Pick/Gemini
+from needing each language at **build** time — only at **deploy** time (module on disk
++ matching IDs in bytecode).
 
 ### Evolution over a third “Mercury” repo
 
@@ -124,5 +147,7 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 
 - Filesystem library extraction in gemini-system.
 - Richer host I/O for both BASIC and future Pascal file support.
+- Move Pascal I/O module ownership to apollo-compiler if the M6 spike lived in
+  gemini-system (steady-state drop-in module).
 - Optional later extraction of the portable runtime into a shared package/repo if
   cross-project dependency pain justifies it.
