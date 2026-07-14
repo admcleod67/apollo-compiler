@@ -201,11 +201,25 @@ builtins, so `examples/hello.pas` and `examples/count.pas` are **semantically** 
 
 **Acceptance criteria**
 
-- [ ] `examples/hello.pas` and `examples/count.pas` analyse with zero semantic errors.
-- [ ] Assignment / condition / `for` / call mismatch fixtures diagnose.
-- [ ] Builtin `writeln('…')` and `writeln(i)` both check clean for the examples’ shapes.
+- [x] `examples/hello.pas` and `examples/count.pas` analyse with zero semantic errors.
+- [x] Assignment / condition / `for` / call mismatch fixtures diagnose.
+- [x] Builtin `writeln('…')` and `writeln(i)` both check clean for the examples’ shapes.
 
-**Status:** not started.
+**Stage 3 notes**
+
+- `Symbol` stores `paramTypes` / `paramIsVar` for user Procedures and Functions.
+- Assignability: same canonical tag, or Integer→Real widening; Error operands skip cascade.
+- Assign LHS: Var / Param, or the enclosing Function name (result assignment).
+- Conditions (`if` / `while` / `repeat`) must be Boolean.
+- `for`: control Var/Param must be Integer; bounds must be Integer.
+- Console I/O matrix:
+
+| Builtin | Args | Allowed arg types |
+|---------|------|-------------------|
+| `write` / `writeln` | 0..n | Integer, Real, Char, String |
+| `read` / `readln` | 1..n | Integer, Real, Char; each arg a Var/Param Identifier |
+
+**Status:** completed.
 
 ### Stage 4 — Driver check mode & Milestone 3 close-out (M3d)
 
@@ -265,7 +279,11 @@ Design targets, not frozen APIs.
 - `/`: numeric → Real. `div` / `mod`: Integer operands → Integer.
 - Relational: compatible operands → `boolean`.
 - Boolean ops (`and` / `or` / `not`): `boolean` operands → `boolean`.
-- Assignment widening and statement rules remain Stage 3.
+
+**Compatibility (Stage 3 statement rules):**
+
+- Assignment: same canonical type, or Integer→Real widening.
+- Conditions must be Boolean; `for` control and bounds must be Integer.
 
 ---
 
@@ -365,7 +383,7 @@ Default: `--ast` stays dump-oriented; `--check` owns analysis exit policy.
 |-------|--------|
 | Stage 1 — Typed symbols & type resolution | completed |
 | Stage 2 — Use resolution & expression typing | completed |
-| Stage 3 — Statements & console I/O | not started |
+| Stage 3 — Statements & console I/O | completed |
 | Stage 4 — `--check`, close-out | not started |
 
 ---

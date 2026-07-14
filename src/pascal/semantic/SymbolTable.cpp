@@ -79,6 +79,17 @@ const Symbol *SymbolTable::lookup(std::string_view name) const {
     return nullptr;
 }
 
+Symbol *SymbolTable::lookupMutable(std::string_view name) {
+    const std::string key = foldAsciiLower(name);
+    for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
+        auto found = it->find(key);
+        if (found != it->end()) {
+            return &found->second;
+        }
+    }
+    return nullptr;
+}
+
 SymbolTable buildSymbolTable(ast::Program &program,
                              apollo::common::DiagnosticEngine &diagnostics) {
     return analyse(program, diagnostics);

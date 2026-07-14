@@ -5,12 +5,38 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace apollo::pascal {
 namespace {
 
-TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
-                 apollo::common::DiagnosticEngine &diagnostics);
+struct AnalyseCtx {
+    SymbolTable &table;
+    apollo::common::DiagnosticEngine &diagnostics;
+    std::string currentFunction; // folded lower; empty outside a function body
+};
+
+char toLowerAscii(char c) {
+    if (c >= 'A' && c <= 'Z') {
+        return static_cast<char>(c - 'A' + 'a');
+    }
+    return c;
+}
+
+std::string foldAsciiLower(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        out.push_back(toLowerAscii(c));
+    }
+    return out;
+}
+
+TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr);
+void checkCall(AnalyseCtx &ctx, std::string_view name,
+               std::vector<std::unique_ptr<ast::Expr>> &args,
+               apollo::common::SourceLocation location, bool asExpression);
+void checkStmt(AnalyseCtx &ctx, ast::Stmt &stmt);
 
 TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
                        apollo::common::DiagnosticEngine &diagnostics);
@@ -21,6 +47,27 @@ bool isNumeric(TypeTag tag) {
 
 bool isError(const TypePtr &type) {
     return !type || canonicalTag(type) == TypeTag::Error;
+}
+
+bool isAssignable(const TypePtr &dest, const TypePtr &src) {
+    if (isError(dest) || isError(src)) {
+        return true;
+    }
+    const TypeTag d = canonicalTag(dest);
+    const TypeTag s = canonicalTag(src);
+    if (d == s) {
+        return true;
+    }
+    return d == TypeTag::Real && s == TypeTag::Integer;
+}
+
+bool isPrintable(TypeTag tag) {
+    return tag == TypeTag::Integer || tag == TypeTag::Real || tag == TypeTag::Char ||
+           tag == TypeTag::String;
+}
+
+bool isReadable(TypeTag tag) {
+    return tag == TypeTag::Integer || tag == TypeTag::Real || tag == TypeTag::Char;
 }
 
 TypePtr typeOfLiteralExpr(const ast::Expr *expr,
@@ -164,8 +211,167 @@ TypePtr typeUnary(ast::UnaryOp op, const TypePtr &operand,
     return makeError();
 }
 
-TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
-                 apollo::common::DiagnosticEngine &diagnostics) {
+void checkUserCallArgs(AnalyseCtx &ctx, const Symbol &callee,
+                       std::vector<std::unique_ptr<ast::Expr>> &args,
+                       apollo::common::SourceLocation location) {
+    if (args.size() != callee.paramTypes.size()) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "wrong number of arguments for '" + callee.name + "'");
+        return;
+    }
+
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (!args[i]) {
+            continue;
+        }
+        const TypePtr &paramType = callee.paramTypes[i];
+        const bool isVar = i < callee.paramIsVar.size() && callee.paramIsVar[i];
+
+        if (isVar) {
+            if (args[i]->kind != ast::ExprKind::Identifier) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "var parameter requires a variable");
+                continue;
+            }
+            const Symbol *argSym = ctx.table.lookup(args[i]->text);
+            if (!argSym ||
+                (argSym->kind != SymbolKind::Var && argSym->kind != SymbolKind::Param)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "var parameter requires a variable");
+                continue;
+            }
+            if (!isAssignable(paramType, args[i]->type)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "argument type incompatible with parameter");
+            }
+        } else if (!isAssignable(paramType, args[i]->type)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   args[i]->range.begin,
+                                   "argument type incompatible with parameter");
+        }
+    }
+}
+
+void checkBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
+                      std::vector<std::unique_ptr<ast::Expr>> &args,
+                      apollo::common::SourceLocation location) {
+    const std::string name = foldAsciiLower(callee.name);
+    const bool isWrite = name == "write" || name == "writeln";
+    const bool isRead = name == "read" || name == "readln";
+
+    if (isWrite) {
+        for (auto &arg : args) {
+            if (!arg) {
+                continue;
+            }
+            if (isError(arg->type)) {
+                continue;
+            }
+            if (!isPrintable(canonicalTag(arg->type))) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       arg->range.begin,
+                                       "argument type not printable for '" + callee.name + "'");
+            }
+        }
+        return;
+    }
+
+    if (isRead) {
+        if (args.empty()) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'" + callee.name + "' requires at least one argument");
+            return;
+        }
+        for (auto &arg : args) {
+            if (!arg) {
+                continue;
+            }
+            if (arg->kind != ast::ExprKind::Identifier) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       arg->range.begin,
+                                       "'" + callee.name + "' argument must be a variable");
+                continue;
+            }
+            const Symbol *argSym = ctx.table.lookup(arg->text);
+            if (!argSym ||
+                (argSym->kind != SymbolKind::Var && argSym->kind != SymbolKind::Param)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       arg->range.begin,
+                                       "'" + callee.name + "' argument must be a variable");
+                continue;
+            }
+            if (isError(arg->type)) {
+                continue;
+            }
+            if (!isReadable(canonicalTag(arg->type))) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       arg->range.begin,
+                                       "argument type not readable for '" + callee.name + "'");
+            }
+        }
+        return;
+    }
+
+    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                           "unsupported builtin '" + callee.name + "'");
+}
+
+void checkCall(AnalyseCtx &ctx, std::string_view name,
+               std::vector<std::unique_ptr<ast::Expr>> &args,
+               apollo::common::SourceLocation location, bool asExpression) {
+    for (auto &arg : args) {
+        if (arg) {
+            (void)typeExpr(ctx, *arg);
+        }
+    }
+
+    const Symbol *found = ctx.table.lookup(name);
+    if (!found) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "undeclared identifier '" + std::string(name) + "'");
+        return;
+    }
+
+    switch (found->kind) {
+    case SymbolKind::Builtin:
+        if (asExpression) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'" + std::string(name) + "' cannot be used as a value");
+        }
+        checkBuiltinCall(ctx, *found, args, location);
+        break;
+    case SymbolKind::Procedure:
+        if (asExpression) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "procedure '" + std::string(name) +
+                                       "' cannot be used as a value");
+        }
+        checkUserCallArgs(ctx, *found, args, location);
+        break;
+    case SymbolKind::Function:
+        checkUserCallArgs(ctx, *found, args, location);
+        break;
+    default:
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "'" + std::string(name) + "' is not callable");
+        break;
+    }
+}
+
+void requireBooleanCondition(AnalyseCtx &ctx, ast::Expr *condition) {
+    if (!condition || isError(condition->type)) {
+        return;
+    }
+    if (canonicalTag(condition->type) != TypeTag::Boolean) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               condition->range.begin, "condition must be boolean");
+    }
+}
+
+TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
     TypePtr result = makeError();
 
     switch (expr.kind) {
@@ -183,10 +389,10 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
         break;
 
     case ast::ExprKind::Identifier: {
-        const Symbol *found = table.lookup(expr.text);
+        const Symbol *found = ctx.table.lookup(expr.text);
         if (!found) {
-            diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "undeclared identifier '" + expr.text + "'");
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                                   "undeclared identifier '" + expr.text + "'");
             result = makeError();
             break;
         }
@@ -197,12 +403,11 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
             result = found->type ? found->type : makeError();
             break;
         case SymbolKind::Function:
-            // Bare function name in expression position: treat as result type (call-less).
             result = found->type ? found->type : makeError();
             break;
         default:
-            diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "'" + expr.text + "' is not a value");
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                                   "'" + expr.text + "' is not a value");
             result = makeError();
             break;
         }
@@ -212,9 +417,9 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
     case ast::ExprKind::Unary: {
         TypePtr operand = makeError();
         if (expr.left) {
-            operand = typeExpr(table, *expr.left, diagnostics);
+            operand = typeExpr(ctx, *expr.left);
         }
-        result = typeUnary(expr.unaryOp, operand, expr.range.begin, diagnostics);
+        result = typeUnary(expr.unaryOp, operand, expr.range.begin, ctx.diagnostics);
         break;
     }
 
@@ -222,36 +427,21 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
         TypePtr left = makeError();
         TypePtr right = makeError();
         if (expr.left) {
-            left = typeExpr(table, *expr.left, diagnostics);
+            left = typeExpr(ctx, *expr.left);
         }
         if (expr.right) {
-            right = typeExpr(table, *expr.right, diagnostics);
+            right = typeExpr(ctx, *expr.right);
         }
-        result = typeBinary(expr.binaryOp, left, right, expr.range.begin, diagnostics);
+        result = typeBinary(expr.binaryOp, left, right, expr.range.begin, ctx.diagnostics);
         break;
     }
 
     case ast::ExprKind::Call: {
-        for (auto &arg : expr.args) {
-            if (arg) {
-                (void)typeExpr(table, *arg, diagnostics);
-            }
-        }
-        const Symbol *found = table.lookup(expr.text);
-        if (!found) {
-            diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "undeclared identifier '" + expr.text + "'");
-            result = makeError();
-            break;
-        }
-        if (found->kind == SymbolKind::Function) {
+        checkCall(ctx, expr.text, expr.args, expr.range.begin, /*asExpression=*/true);
+        const Symbol *found = ctx.table.lookup(expr.text);
+        if (found && found->kind == SymbolKind::Function) {
             result = found->type ? found->type : makeError();
-        } else if (found->kind == SymbolKind::Builtin || found->kind == SymbolKind::Procedure) {
-            // Stage 3 will check builtins/procedures; Stage 2 marks non-value call result.
-            result = makeError();
         } else {
-            diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "'" + expr.text + "' is not a function");
             result = makeError();
         }
         break;
@@ -259,7 +449,7 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
 
     case ast::ExprKind::Group:
         if (expr.left) {
-            result = typeExpr(table, *expr.left, diagnostics);
+            result = typeExpr(ctx, *expr.left);
         } else {
             result = makeError();
         }
@@ -270,131 +460,190 @@ TypePtr typeExpr(SymbolTable &table, ast::Expr &expr,
     return result;
 }
 
-void typeStmt(SymbolTable &table, ast::Stmt &stmt,
-              apollo::common::DiagnosticEngine &diagnostics);
+void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
+    TypePtr rhsType = makeError();
+    if (stmt.value) {
+        rhsType = typeExpr(ctx, *stmt.value);
+    }
 
-void typeCompound(SymbolTable &table, ast::CompoundStmt &compound,
-                  apollo::common::DiagnosticEngine &diagnostics) {
-    for (auto &stmt : compound.statements) {
-        typeStmt(table, stmt, diagnostics);
+    const Symbol *lhs = ctx.table.lookup(stmt.name);
+    if (!lhs) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "undeclared identifier '" + stmt.name + "'");
+        return;
+    }
+
+    TypePtr destType;
+    if (lhs->kind == SymbolKind::Var || lhs->kind == SymbolKind::Param) {
+        destType = lhs->type;
+    } else if (lhs->kind == SymbolKind::Function &&
+               foldAsciiLower(lhs->name) == ctx.currentFunction) {
+        destType = lhs->type;
+    } else {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "'" + stmt.name + "' is not assignable");
+        return;
+    }
+
+    if (!isAssignable(destType, rhsType)) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "incompatible types in assignment");
     }
 }
 
-void typeStmt(SymbolTable &table, ast::Stmt &stmt,
-              apollo::common::DiagnosticEngine &diagnostics) {
+void checkFor(AnalyseCtx &ctx, ast::Stmt &stmt) {
+    TypePtr startType = makeError();
+    TypePtr limitType = makeError();
+    if (stmt.value) {
+        startType = typeExpr(ctx, *stmt.value);
+    }
+    if (stmt.forLimit) {
+        limitType = typeExpr(ctx, *stmt.forLimit);
+    }
+
+    const Symbol *control = ctx.table.lookup(stmt.name);
+    if (!control) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "undeclared identifier '" + stmt.name + "'");
+    } else if (control->kind != SymbolKind::Var && control->kind != SymbolKind::Param) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "for control variable must be a variable");
+    } else if (!isError(control->type) &&
+               canonicalTag(control->type) != TypeTag::Integer) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "for control variable must be integer");
+    }
+
+    if (!isError(startType) && canonicalTag(startType) != TypeTag::Integer) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               stmt.value ? stmt.value->range.begin : stmt.range.begin,
+                               "for bound must be integer");
+    }
+    if (!isError(limitType) && canonicalTag(limitType) != TypeTag::Integer) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               stmt.forLimit ? stmt.forLimit->range.begin : stmt.range.begin,
+                               "for bound must be integer");
+    }
+
+    if (stmt.thenBranch) {
+        checkStmt(ctx, *stmt.thenBranch);
+    }
+}
+
+void checkStmt(AnalyseCtx &ctx, ast::Stmt &stmt) {
     switch (stmt.kind) {
     case ast::StmtKind::Compound:
         for (auto &inner : stmt.statements) {
-            typeStmt(table, inner, diagnostics);
+            checkStmt(ctx, inner);
         }
         break;
     case ast::StmtKind::Assign:
-        if (stmt.value) {
-            (void)typeExpr(table, *stmt.value, diagnostics);
-        }
+        checkAssign(ctx, stmt);
         break;
     case ast::StmtKind::Call:
-        for (auto &arg : stmt.args) {
-            if (arg) {
-                (void)typeExpr(table, *arg, diagnostics);
-            }
-        }
+        checkCall(ctx, stmt.name, stmt.args, stmt.range.begin, /*asExpression=*/false);
         break;
     case ast::StmtKind::If:
         if (stmt.condition) {
-            (void)typeExpr(table, *stmt.condition, diagnostics);
+            (void)typeExpr(ctx, *stmt.condition);
+            requireBooleanCondition(ctx, stmt.condition.get());
         }
         if (stmt.thenBranch) {
-            typeStmt(table, *stmt.thenBranch, diagnostics);
+            checkStmt(ctx, *stmt.thenBranch);
         }
         if (stmt.elseBranch) {
-            typeStmt(table, *stmt.elseBranch, diagnostics);
+            checkStmt(ctx, *stmt.elseBranch);
         }
         break;
     case ast::StmtKind::While:
         if (stmt.condition) {
-            (void)typeExpr(table, *stmt.condition, diagnostics);
+            (void)typeExpr(ctx, *stmt.condition);
+            requireBooleanCondition(ctx, stmt.condition.get());
         }
         if (stmt.thenBranch) {
-            typeStmt(table, *stmt.thenBranch, diagnostics);
+            checkStmt(ctx, *stmt.thenBranch);
         }
         break;
     case ast::StmtKind::Repeat:
         for (auto &inner : stmt.statements) {
-            typeStmt(table, inner, diagnostics);
+            checkStmt(ctx, inner);
         }
         if (stmt.condition) {
-            (void)typeExpr(table, *stmt.condition, diagnostics);
+            (void)typeExpr(ctx, *stmt.condition);
+            requireBooleanCondition(ctx, stmt.condition.get());
         }
         break;
     case ast::StmtKind::For:
-        if (stmt.value) {
-            (void)typeExpr(table, *stmt.value, diagnostics);
-        }
-        if (stmt.forLimit) {
-            (void)typeExpr(table, *stmt.forLimit, diagnostics);
-        }
-        if (stmt.thenBranch) {
-            typeStmt(table, *stmt.thenBranch, diagnostics);
-        }
+        checkFor(ctx, stmt);
         break;
     }
 }
 
-void walkBlock(SymbolTable &table, ast::Block &block,
-               apollo::common::DiagnosticEngine &diagnostics);
+void walkBlock(AnalyseCtx &ctx, ast::Block &block);
 
-void walkSubprogram(SymbolTable &table, ast::Subprogram &sub,
-                    apollo::common::DiagnosticEngine &diagnostics) {
+void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
     TypePtr returnType;
     if (sub.isFunction) {
         if (sub.returnType) {
-            returnType = resolveDenoter(table, *sub.returnType, diagnostics);
+            returnType = resolveDenoter(ctx.table, *sub.returnType, ctx.diagnostics);
         } else {
             returnType = makeError();
         }
     }
 
     const SymbolKind kind = sub.isFunction ? SymbolKind::Function : SymbolKind::Procedure;
-    (void)table.declare(kind, sub.name, sub.range.begin, std::move(returnType));
+    (void)ctx.table.declare(kind, sub.name, sub.range.begin, std::move(returnType));
+    Symbol *subSym = ctx.table.lookupMutable(sub.name);
 
-    table.pushScope();
+    ctx.table.pushScope();
     for (const auto &param : sub.params) {
-        TypePtr paramType = resolveDenoter(table, param.type, diagnostics);
+        TypePtr paramType = resolveDenoter(ctx.table, param.type, ctx.diagnostics);
+        if (subSym) {
+            for (std::size_t i = 0; i < param.names.size(); ++i) {
+                subSym->paramTypes.push_back(paramType);
+                subSym->paramIsVar.push_back(param.isVar);
+            }
+        }
         for (const auto &name : param.names) {
-            (void)table.declare(SymbolKind::Param, name, param.range.begin, paramType,
-                                param.isVar);
+            (void)ctx.table.declare(SymbolKind::Param, name, param.range.begin, paramType,
+                                    param.isVar);
         }
     }
-    if (sub.block) {
-        walkBlock(table, *sub.block, diagnostics);
+
+    const std::string previousFunction = ctx.currentFunction;
+    if (sub.isFunction) {
+        ctx.currentFunction = foldAsciiLower(sub.name);
     }
-    table.popScope();
+    if (sub.block) {
+        walkBlock(ctx, *sub.block);
+    }
+    ctx.currentFunction = previousFunction;
+    ctx.table.popScope();
 }
 
-void walkBlock(SymbolTable &table, ast::Block &block,
-               apollo::common::DiagnosticEngine &diagnostics) {
+void walkBlock(AnalyseCtx &ctx, ast::Block &block) {
     for (const auto &decl : block.consts) {
-        TypePtr type = typeOfLiteralExpr(decl.value.get(), diagnostics);
-        (void)table.declare(SymbolKind::Const, decl.name, decl.range.begin, std::move(type));
+        TypePtr type = typeOfLiteralExpr(decl.value.get(), ctx.diagnostics);
+        (void)ctx.table.declare(SymbolKind::Const, decl.name, decl.range.begin, std::move(type));
     }
     for (const auto &decl : block.types) {
-        TypePtr underlying = resolveDenoter(table, decl.type, diagnostics);
+        TypePtr underlying = resolveDenoter(ctx.table, decl.type, ctx.diagnostics);
         TypePtr alias = makeAlias(decl.name, std::move(underlying));
-        (void)table.declare(SymbolKind::Type, decl.name, decl.range.begin, std::move(alias));
+        (void)ctx.table.declare(SymbolKind::Type, decl.name, decl.range.begin, std::move(alias));
     }
     for (const auto &decl : block.vars) {
-        TypePtr type = resolveDenoter(table, decl.type, diagnostics);
+        TypePtr type = resolveDenoter(ctx.table, decl.type, ctx.diagnostics);
         for (const auto &name : decl.names) {
-            (void)table.declare(SymbolKind::Var, name, decl.range.begin, type);
+            (void)ctx.table.declare(SymbolKind::Var, name, decl.range.begin, type);
         }
     }
     for (auto &sub : block.subprograms) {
-        walkSubprogram(table, sub, diagnostics);
+        walkSubprogram(ctx, sub);
     }
 
-    // Type expressions while this block's scope is still active.
-    typeCompound(table, block.body, diagnostics);
+    for (auto &stmt : block.body.statements) {
+        checkStmt(ctx, stmt);
+    }
 }
 
 void seedPredefinedTypes(SymbolTable &table, apollo::common::SourceLocation location) {
@@ -433,7 +682,9 @@ SymbolTable analyse(ast::Program &program,
     }
 
     (void)table.declare(SymbolKind::Program, program.name, program.range.begin);
-    walkBlock(table, program.block, diagnostics);
+
+    AnalyseCtx ctx{table, diagnostics, {}};
+    walkBlock(ctx, program.block);
     return table;
 }
 

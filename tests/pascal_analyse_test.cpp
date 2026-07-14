@@ -136,5 +136,76 @@ int main() {
         }
     }
 
+    // examples/hello.pas (inline)
+    {
+        ScanAnalyse run("hello.pas",
+                        "program Hello;\n"
+                        "begin\n"
+                        "  writeln('Hello, Gemini!');\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("hello.pas should analyse clean");
+        }
+    }
+
+    // examples/count.pas (inline)
+    {
+        ScanAnalyse run("count.pas",
+                        "program Count;\n"
+                        "var\n"
+                        "  i: integer;\n"
+                        "begin\n"
+                        "  for i := 1 to 10 do\n"
+                        "    writeln(i);\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("count.pas should analyse clean");
+        }
+    }
+
+    // Assign real to boolean
+    {
+        ScanAnalyse run("badassign.pas",
+                        "program P; var b: boolean; begin b := 1.5; end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("real to boolean assignment should diagnose");
+        }
+    }
+
+    // Non-boolean if condition
+    {
+        ScanAnalyse run("badif.pas", "program P; begin if 1 then writeln; end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("non-boolean if condition should diagnose");
+        }
+    }
+
+    // for with boolean control variable
+    {
+        ScanAnalyse run("badfor.pas",
+                        "program P; var b: boolean; begin for b := 1 to 10 do writeln; end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("boolean for control should diagnose");
+        }
+    }
+
+    // writeln(true) not printable
+    {
+        ScanAnalyse run("badwrite.pas", "program P; begin writeln(true); end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("writeln(true) should diagnose");
+        }
+    }
+
+    // User procedure wrong arity / bad arg type
+    {
+        ScanAnalyse run("badcall.pas",
+                        "program P; procedure Q(x: integer); begin end; "
+                        "begin Q; Q(1.0); end.");
+        if (run.diagnostics.errorCount() < 2) {
+            return fail("wrong arity and real arg should yield >= 2 errors");
+        }
+    }
+
     return 0;
 }

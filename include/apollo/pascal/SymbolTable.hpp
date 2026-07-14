@@ -36,6 +36,9 @@ struct Symbol {
     apollo::common::SourceLocation location{};
     TypePtr type;
     bool isVarParam{false};
+    /// Procedure/Function formal parameter types (outermost to last).
+    std::vector<TypePtr> paramTypes;
+    std::vector<bool> paramIsVar;
 };
 
 class SymbolTable {
@@ -52,6 +55,9 @@ public:
 
     /// Look up a name from innermost scope outward. Null if not found.
     [[nodiscard]] const Symbol *lookup(std::string_view name) const;
+
+    /// Mutable lookup (innermost → outer). Used to attach signatures after declare.
+    [[nodiscard]] Symbol *lookupMutable(std::string_view name);
 
 private:
     apollo::common::DiagnosticEngine *diagnostics_;
