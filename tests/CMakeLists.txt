@@ -95,7 +95,7 @@ add_test(NAME apollo_pascal_parser_test COMMAND apollo_pascal_parser_test)
 add_test(NAME apollo_pascal_symbol_test COMMAND apollo_pascal_symbol_test)
 add_test(NAME apollo_pascal_analyse_test COMMAND apollo_pascal_analyse_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
-set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.3.0")
+set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.4.0")
 
 add_test(
     NAME apolloc_list_fixture
