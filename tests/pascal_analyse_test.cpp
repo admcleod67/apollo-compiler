@@ -207,5 +207,42 @@ int main() {
         }
     }
 
+    // Duplicate procedure must not merge signatures onto the first symbol
+    {
+        ScanAnalyse run("dupsug.pas",
+                        "program P; procedure Q; begin end; "
+                        "procedure Q(x: integer); begin end; "
+                        "begin Q(1); end.");
+        if (run.diagnostics.errorCount() < 2) {
+            return fail("duplicate procedure + Q(1) should yield >= 2 errors");
+        }
+    }
+
+    // Bare function with parameters is a 0-arg call (wrong arity)
+    {
+        ScanAnalyse run("barefn.pas",
+                        "program P; var i: integer; "
+                        "function F(x: integer): integer; begin F := x; end; "
+                        "begin i := F; end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("bare F with required params should diagnose");
+        }
+    }
+
+    // Bare zero-param function is a valid 0-arg call
+    {
+        ScanAnalyse run("barefn0.pas",
+                        "program P; var i: integer; "
+                        "function G: integer; begin G := 1; end; "
+                        "begin i := G; end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("bare zero-param function should be clean");
+        }
+        apollo::pascal::ast::Expr *rhs = firstAssignRhs(*run.program);
+        if (!rhs || apollo::pascal::canonicalTag(rhs->type) != apollo::pascal::TypeTag::Integer) {
+            return fail("i := G should type as Integer");
+        }
+    }
+
     return 0;
 }

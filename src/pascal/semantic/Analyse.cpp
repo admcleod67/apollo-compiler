@@ -402,9 +402,13 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
         case SymbolKind::Param:
             result = found->type ? found->type : makeError();
             break;
-        case SymbolKind::Function:
+        case SymbolKind::Function: {
+            // Bare function name is a zero-argument call (arity checked).
+            std::vector<std::unique_ptr<ast::Expr>> noArgs;
+            checkUserCallArgs(ctx, *found, noArgs, expr.range.begin);
             result = found->type ? found->type : makeError();
             break;
+        }
         default:
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
                                    "'" + expr.text + "' is not a value");
@@ -592,8 +596,9 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
     }
 
     const SymbolKind kind = sub.isFunction ? SymbolKind::Function : SymbolKind::Procedure;
-    (void)ctx.table.declare(kind, sub.name, sub.range.begin, std::move(returnType));
-    Symbol *subSym = ctx.table.lookupMutable(sub.name);
+    const bool declared =
+        ctx.table.declare(kind, sub.name, sub.range.begin, std::move(returnType));
+    Symbol *subSym = declared ? ctx.table.lookupMutable(sub.name) : nullptr;
 
     ctx.table.pushScope();
     for (const auto &param : sub.params) {

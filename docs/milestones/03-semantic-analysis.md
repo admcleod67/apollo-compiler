@@ -418,3 +418,13 @@ Default: `--ast` stays dump-oriented; `--check` owns analysis exit policy.
   codes.
 - When semantic rules outgrow this page, split to `docs/pascal-language.md` (types /
   checking) and link it from here.
+- **Array assignability** (tag-only today): deferred — details under
+  [Milestone 4 — Intermediate representation](04-intermediate-representation.md)
+  (Open debts / prerequisites).
+
+### Post-close-out polish
+
+- Duplicate subprogram declarations no longer append formals onto the first symbol’s
+  signature (only fill `paramTypes` / `paramIsVar` when `declare` succeeds).
+- A bare function identifier in expression position is treated as a **zero-argument
+  call** (arity checked); `F()` still goes through the normal call path.
