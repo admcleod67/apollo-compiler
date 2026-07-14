@@ -105,12 +105,21 @@ type/param/subprogram entries. Still **no** use-site resolution or expression ch
 
 **Acceptance criteria**
 
-- [ ] Predefined types are visible in the outermost scope.
-- [ ] Successful `var` / `type` / `const` fixtures attach resolved types to symbols.
-- [ ] Unknown type identifier in a denoter reports a diagnostic (no crash).
-- [ ] Existing M2 tests remain green.
+- [x] Predefined types are visible in the outermost scope.
+- [x] Successful `var` / `type` / `const` fixtures attach resolved types to symbols.
+- [x] Unknown type identifier in a denoter reports a diagnostic (no crash).
+- [x] Existing M2 tests remain green.
 
-**Status:** not started.
+**Stage 1 notes**
+
+- `Type` is kind + struct (`TypeTag`: Integer/Real/Boolean/Char/String/Alias/Array/Error)
+  with `shared_ptr` chaining for Alias/Array; helpers live in `semantic/Type.cpp`.
+- Const types come from **literal** initializers only (including a group around a literal);
+  other forms get Error + a diagnostic.
+- `buildSymbolTable` returns `SymbolTable` by value; denoter name lookup uses
+  `SymbolTable::lookup`.
+
+**Status:** completed.
 
 ### Stage 2 — Use resolution & expression typing (M3b)
 
@@ -339,7 +348,7 @@ Default: `--ast` stays dump-oriented; `--check` owns analysis exit policy.
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Typed symbols & type resolution | not started |
+| Stage 1 — Typed symbols & type resolution | completed |
 | Stage 2 — Use resolution & expression typing | not started |
 | Stage 3 — Statements & console I/O | not started |
 | Stage 4 — `--check`, close-out | not started |

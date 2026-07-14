@@ -4,9 +4,11 @@
 #include "apollo/pascal/Parser.hpp"
 #include "apollo/pascal/Scanner.hpp"
 #include "apollo/pascal/SymbolTable.hpp"
+#include "apollo/pascal/Type.hpp"
 
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 
@@ -22,13 +24,14 @@ struct ScanParseSymbols {
     apollo::common::DiagnosticEngine diagnostics;
     apollo::pascal::TokenStream tokens;
     std::unique_ptr<apollo::pascal::ast::Program> program;
+    std::optional<apollo::pascal::SymbolTable> symbols;
 
     explicit ScanParseSymbols(std::string path, std::string text)
         : source(apollo::common::SourceFile::fromString(std::move(path), std::move(text))),
           diagnostics(source), tokens(apollo::pascal::scan(source, diagnostics)),
           program(apollo::pascal::parse(source, tokens, diagnostics)) {
         if (program) {
-            apollo::pascal::buildSymbolTable(*program, diagnostics);
+            symbols = apollo::pascal::buildSymbolTable(*program, diagnostics);
         }
     }
 };
@@ -89,6 +92,76 @@ int main() {
         }
         if (!program) {
             return fail("multi-error program should still form a Program root");
+        }
+    }
+
+    // var i: integer → Integer type
+    {
+        ScanParseSymbols run("intvar.pas", "program P; var i: integer; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.symbols) {
+            return fail("integer var fixture should be clean");
+        }
+        const auto *sym = run.symbols->lookup("i");
+        if (!sym || sym->kind != apollo::pascal::SymbolKind::Var ||
+            apollo::pascal::canonicalTag(sym->type) != apollo::pascal::TypeTag::Integer) {
+            return fail("var i should be Integer");
+        }
+        if (!run.symbols->lookup("integer") ||
+            run.symbols->lookup("integer")->kind != apollo::pascal::SymbolKind::Type) {
+            return fail("predefined integer type should be visible");
+        }
+    }
+
+    // type T = integer; var x: T → peels to Integer
+    {
+        ScanParseSymbols run("alias.pas",
+                             "program P; type T = integer; var x: T; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.symbols) {
+            return fail("alias fixture should be clean");
+        }
+        const auto *x = run.symbols->lookup("x");
+        if (!x || apollo::pascal::canonicalTag(x->type) != apollo::pascal::TypeTag::Integer) {
+            return fail("var x: T should peel to Integer");
+        }
+        const auto *t = run.symbols->lookup("T");
+        if (!t || t->kind != apollo::pascal::SymbolKind::Type || !t->type ||
+            t->type->tag != apollo::pascal::TypeTag::Alias) {
+            return fail("type T should be an Alias");
+        }
+    }
+
+    // array [1..10] of integer
+    {
+        ScanParseSymbols run("arr.pas",
+                             "program P; var a: array [1..10] of integer; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.symbols) {
+            return fail("array fixture should be clean");
+        }
+        const auto *a = run.symbols->lookup("a");
+        if (!a || !a->type || a->type->tag != apollo::pascal::TypeTag::Array ||
+            apollo::pascal::canonicalTag(a->type->element) != apollo::pascal::TypeTag::Integer) {
+            return fail("array a should have Integer elements");
+        }
+    }
+
+    // unknown type name
+    {
+        ScanParseSymbols run("badtype.pas", "program P; var z: nope; begin end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("unknown type name should diagnose");
+        }
+    }
+
+    // const N = 10 → Integer
+    {
+        ScanParseSymbols run("constlit.pas", "program P; const N = 10; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.symbols) {
+            return fail("const literal fixture should be clean");
+        }
+        const auto *n = run.symbols->lookup("N");
+        if (!n || n->kind != apollo::pascal::SymbolKind::Const ||
+            apollo::pascal::canonicalTag(n->type) != apollo::pascal::TypeTag::Integer) {
+            return fail("const N = 10 should be Integer");
         }
     }
 

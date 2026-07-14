@@ -23,9 +23,9 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 ## Status
 
 **Milestone 1 — Source & scanner infrastructure** is complete.
-**Milestone 2 — Parser** is complete. The toolchain reports `0.2.0` (`PROJECT_VERSION`);
-cut git tag `v0.2.0` when ready. Next up is
-[Milestone 3 — Semantic analysis](docs/milestones/03-semantic-analysis.md).
+**Milestone 2 — Parser** is complete (`0.2.0`).
+**Milestone 3 Stage 1** (typed symbols & type resolution) is complete; Stages 2–4 of
+[semantic analysis](docs/milestones/03-semantic-analysis.md) are next.
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 

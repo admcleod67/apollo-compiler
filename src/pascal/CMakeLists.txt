@@ -2,7 +2,8 @@ add_library(apollo-pascal
     scanner/Scanner.cpp
     TokenDump.cpp
     AstDump.cpp
-    SymbolTable.cpp
+    semantic/Type.cpp
+    semantic/SymbolTable.cpp
     parser/TokenCursor.cpp
     parser/Parser.cpp
 )

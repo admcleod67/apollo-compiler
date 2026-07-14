@@ -61,7 +61,7 @@ int astFile(std::string_view path) {
     const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
     const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
     if (program) {
-        apollo::pascal::buildSymbolTable(*program, diagnostics);
+        (void)apollo::pascal::buildSymbolTable(*program, diagnostics);
         apollo::pascal::writeAstDump(std::cout, *program);
     }
     diagnostics.write(std::cerr);
