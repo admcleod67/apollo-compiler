@@ -55,4 +55,9 @@ bool TokenCursor::expect(TokenKind kind, std::string_view message) {
     return false;
 }
 
+void TokenCursor::error(std::string_view message) {
+    diagnostics_->report(apollo::common::DiagnosticSeverity::Error, current().range.begin,
+                         std::string(message));
+}
+
 } // namespace apollo::pascal

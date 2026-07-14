@@ -31,6 +31,9 @@ public:
     /// On mismatch: report an error at the current token and return false (do not advance).
     [[nodiscard]] bool expect(TokenKind kind, std::string_view message);
 
+    /// Report an error at the current token without consuming it.
+    void error(std::string_view message);
+
     [[nodiscard]] std::size_t index() const noexcept { return index_; }
 
 private:

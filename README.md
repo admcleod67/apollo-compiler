@@ -23,8 +23,8 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 ## Status
 
 **Milestone 1 — Source & scanner infrastructure** is complete (`0.1.0`).
-**Milestone 2 — Parser** Stages 1–2 are complete (skeleton, expressions, assignment/calls);
-Stages 3–4 follow in [docs/milestones/02-parser.md](docs/milestones/02-parser.md).
+**Milestone 2 — Parser** Stages 1–3 are complete (including declarations and control flow);
+Stage 4 (`--ast`, symbol table) follows in [docs/milestones/02-parser.md](docs/milestones/02-parser.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 

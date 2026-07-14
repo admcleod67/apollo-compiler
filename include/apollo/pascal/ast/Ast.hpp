@@ -1,5 +1,5 @@
 //
-// Pascal AST for Milestone 2 (program / statements / expressions).
+// Pascal AST for Milestone 2 (program / statements / expressions / decls).
 //
 
 #ifndef APOLLO_PASCAL_AST_AST_HPP
@@ -10,6 +10,7 @@
 #include "apollo/common/SourceLocation.hpp"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -62,20 +63,80 @@ struct Expr {
     std::vector<std::unique_ptr<Expr>> args;
 };
 
+enum class TypeKind {
+    Named,
+    Array,
+};
+
+struct TypeDenoter {
+    TypeKind kind{};
+    apollo::common::SourceRange range{};
+    std::string name;
+    std::unique_ptr<Expr> indexLow;
+    std::unique_ptr<Expr> indexHigh;
+    std::unique_ptr<TypeDenoter> element;
+};
+
+struct ConstDecl {
+    apollo::common::SourceRange range{};
+    std::string name;
+    std::unique_ptr<Expr> value;
+};
+
+struct TypeDecl {
+    apollo::common::SourceRange range{};
+    std::string name;
+    TypeDenoter type;
+};
+
+struct VarDecl {
+    apollo::common::SourceRange range{};
+    std::vector<std::string> names;
+    TypeDenoter type;
+};
+
+struct ParamDecl {
+    apollo::common::SourceRange range{};
+    bool isVar{false};
+    std::vector<std::string> names;
+    TypeDenoter type;
+};
+
+struct Block;
+
+struct Subprogram {
+    apollo::common::SourceRange range{};
+    bool isFunction{false};
+    std::string name;
+    std::vector<ParamDecl> params;
+    std::optional<TypeDenoter> returnType;
+    /// Nested block (owned; breaks Block ↔ Subprogram value cycle).
+    std::unique_ptr<Block> block;
+};
+
 enum class StmtKind {
     Compound,
     Assign,
     Call,
+    If,
+    While,
+    Repeat,
+    For,
 };
 
 struct Stmt {
     StmtKind kind{};
     apollo::common::SourceRange range{};
-    /// Assign LHS or call callee.
+    /// Assign LHS, call callee, or for-loop control variable.
     std::string name;
     std::unique_ptr<Expr> value;
     std::vector<std::unique_ptr<Expr>> args;
     std::vector<Stmt> statements;
+    std::unique_ptr<Expr> condition;
+    std::unique_ptr<Stmt> thenBranch;
+    std::unique_ptr<Stmt> elseBranch;
+    std::unique_ptr<Expr> forLimit;
+    bool forDownto{false};
 };
 
 struct CompoundStmt {
@@ -85,6 +146,10 @@ struct CompoundStmt {
 
 struct Block {
     apollo::common::SourceRange range{};
+    std::vector<ConstDecl> consts;
+    std::vector<TypeDecl> types;
+    std::vector<VarDecl> vars;
+    std::vector<Subprogram> subprograms;
     CompoundStmt body;
 };
 

@@ -193,12 +193,14 @@ console programs parse: locals, control structures, and nested subprograms.
 
 **Acceptance criteria**
 
-- [ ] `examples/hello.pas` parses successfully (call to `writeln` present in AST).
-- [ ] Control-flow and declaration fixtures parse; ASTs include the expected node kinds.
-- [ ] Unsupported `file` type usage diagnoses without crashing.
-- [ ] Still no Gemini dependency.
+- [x] `examples/hello.pas` parses successfully (call to `writeln` present in AST).
+- [x] Control-flow and declaration fixtures parse; ASTs include the expected node kinds.
+- [x] Unsupported `file` type usage diagnoses without crashing.
+- [x] Still no Gemini dependency.
 
-**Status:** not started.
+**Status:** completed.
+
+Stage 3 also adds [`examples/count.pas`](../../examples/count.pas) (`var` + `for` + `writeln`).
 
 ### Stage 4 — Symbol table, recovery polish & Milestone 2 close-out (M2d)
 
@@ -389,7 +391,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 |-------|--------|
 | Stage 1 — Parser framework & program skeleton | completed |
 | Stage 2 — Expressions & simple statements | completed |
-| Stage 3 — Declarations, control flow & calls | not started |
+| Stage 3 — Declarations, control flow & calls | completed |
 | Stage 4 — Symbol table, `--ast`, close-out | not started |
 
 ---

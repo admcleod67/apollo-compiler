@@ -28,6 +28,16 @@ void syncStatement(TokenCursor &cursor) {
     skipUntil(cursor, TokenKind::Semicolon, TokenKind::KeywordEnd);
 }
 
+void syncDeclaration(TokenCursor &cursor) {
+    while (!cursor.check(TokenKind::EndOfFile) && !cursor.check(TokenKind::Semicolon) &&
+           !cursor.check(TokenKind::KeywordBegin) && !cursor.check(TokenKind::KeywordConst) &&
+           !cursor.check(TokenKind::KeywordType) && !cursor.check(TokenKind::KeywordVar) &&
+           !cursor.check(TokenKind::KeywordProcedure) &&
+           !cursor.check(TokenKind::KeywordFunction)) {
+        cursor.advance();
+    }
+}
+
 std::optional<ast::BinaryOp> multiplicativeOp(TokenKind kind) {
     switch (kind) {
     case TokenKind::Star:
@@ -79,6 +89,9 @@ std::optional<ast::BinaryOp> relationalOp(TokenKind kind) {
 
 std::unique_ptr<ast::Expr> parseExpression(TokenCursor &cursor);
 std::unique_ptr<ast::Expr> parseFactor(TokenCursor &cursor);
+ast::TypeDenoter parseTypeDenoter(TokenCursor &cursor);
+ast::Block parseBlock(TokenCursor &cursor);
+ast::Stmt parseStatement(TokenCursor &cursor);
 
 std::vector<std::unique_ptr<ast::Expr>> parseArgList(TokenCursor &cursor) {
     std::vector<std::unique_ptr<ast::Expr>> args;
@@ -258,7 +271,181 @@ std::unique_ptr<ast::Expr> parseExpression(TokenCursor &cursor) {
     return left;
 }
 
-ast::Stmt parseStatement(TokenCursor &cursor);
+ast::TypeDenoter parseTypeDenoter(TokenCursor &cursor) {
+    ast::TypeDenoter type;
+    const Token &start = cursor.current();
+
+    if (cursor.check(TokenKind::KeywordFile)) {
+        cursor.error("file types are not supported yet");
+        type.kind = ast::TypeKind::Named;
+        type.range = start.range;
+        syncDeclaration(cursor);
+        return type;
+    }
+
+    if (cursor.match(TokenKind::KeywordArray)) {
+        type.kind = ast::TypeKind::Array;
+        (void)cursor.expect(TokenKind::LeftBracket, "expected '[' after 'array'");
+        type.indexLow = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::DotDot, "expected '..' in array index range");
+        type.indexHigh = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::RightBracket, "expected ']' after array index range");
+        (void)cursor.expect(TokenKind::KeywordOf, "expected 'of' after array index range");
+        type.element = std::make_unique<ast::TypeDenoter>(parseTypeDenoter(cursor));
+        if (type.element) {
+            type.range = spanRanges(start.range, type.element->range);
+        } else {
+            type.range = start.range;
+        }
+        return type;
+    }
+
+    if (cursor.check(TokenKind::Identifier)) {
+        type.kind = ast::TypeKind::Named;
+        type.name = std::string(cursor.current().lexeme);
+        type.range = cursor.current().range;
+        cursor.advance();
+        return type;
+    }
+
+    cursor.error("expected type");
+    type.kind = ast::TypeKind::Named;
+    type.range = start.range;
+    syncDeclaration(cursor);
+    return type;
+}
+
+std::vector<std::string> parseIdentList(TokenCursor &cursor) {
+    std::vector<std::string> names;
+    if (!cursor.check(TokenKind::Identifier)) {
+        (void)cursor.expect(TokenKind::Identifier, "expected identifier");
+        return names;
+    }
+    names.push_back(std::string(cursor.current().lexeme));
+    cursor.advance();
+    while (cursor.match(TokenKind::Comma)) {
+        if (!cursor.check(TokenKind::Identifier)) {
+            (void)cursor.expect(TokenKind::Identifier, "expected identifier");
+            break;
+        }
+        names.push_back(std::string(cursor.current().lexeme));
+        cursor.advance();
+    }
+    return names;
+}
+
+void parseConstSection(TokenCursor &cursor, ast::Block &block) {
+    cursor.advance(); // const
+    while (cursor.check(TokenKind::Identifier)) {
+        ast::ConstDecl decl;
+        const Token &nameTok = cursor.current();
+        decl.name = std::string(nameTok.lexeme);
+        cursor.advance();
+        (void)cursor.expect(TokenKind::Equal, "expected '=' in const declaration");
+        decl.value = parseExpression(cursor);
+        const Token &semi = cursor.current();
+        (void)cursor.expect(TokenKind::Semicolon, "expected ';' after const declaration");
+        if (decl.value) {
+            decl.range = spanRanges(nameTok.range, decl.value->range);
+        } else {
+            decl.range = nameTok.range;
+            syncDeclaration(cursor);
+        }
+        (void)semi;
+        block.consts.push_back(std::move(decl));
+    }
+}
+
+void parseTypeSection(TokenCursor &cursor, ast::Block &block) {
+    cursor.advance(); // type
+    while (cursor.check(TokenKind::Identifier)) {
+        ast::TypeDecl decl;
+        const Token &nameTok = cursor.current();
+        decl.name = std::string(nameTok.lexeme);
+        cursor.advance();
+        (void)cursor.expect(TokenKind::Equal, "expected '=' in type declaration");
+        decl.type = parseTypeDenoter(cursor);
+        (void)cursor.expect(TokenKind::Semicolon, "expected ';' after type declaration");
+        decl.range = spanRanges(nameTok.range, decl.type.range);
+        block.types.push_back(std::move(decl));
+    }
+}
+
+void parseVarSection(TokenCursor &cursor, ast::Block &block) {
+    cursor.advance(); // var
+    while (cursor.check(TokenKind::Identifier)) {
+        ast::VarDecl decl;
+        const Token &first = cursor.current();
+        decl.names = parseIdentList(cursor);
+        (void)cursor.expect(TokenKind::Colon, "expected ':' in var declaration");
+        decl.type = parseTypeDenoter(cursor);
+        (void)cursor.expect(TokenKind::Semicolon, "expected ';' after var declaration");
+        decl.range = spanRanges(first.range, decl.type.range);
+        block.vars.push_back(std::move(decl));
+    }
+}
+
+std::vector<ast::ParamDecl> parseParamList(TokenCursor &cursor) {
+    std::vector<ast::ParamDecl> params;
+    if (!cursor.match(TokenKind::LeftParen)) {
+        return params;
+    }
+    if (cursor.check(TokenKind::RightParen)) {
+        (void)cursor.expect(TokenKind::RightParen, "expected ')'");
+        return params;
+    }
+    for (;;) {
+        ast::ParamDecl param;
+        const Token &start = cursor.current();
+        param.isVar = cursor.match(TokenKind::KeywordVar);
+        param.names = parseIdentList(cursor);
+        (void)cursor.expect(TokenKind::Colon, "expected ':' in parameter list");
+        param.type = parseTypeDenoter(cursor);
+        param.range = spanRanges(start.range, param.type.range);
+        params.push_back(std::move(param));
+        if (!cursor.match(TokenKind::Semicolon)) {
+            break;
+        }
+    }
+    (void)cursor.expect(TokenKind::RightParen, "expected ')' after parameter list");
+    return params;
+}
+
+ast::Subprogram parseSubprogram(TokenCursor &cursor) {
+    ast::Subprogram sub;
+    const Token &start = cursor.current();
+    sub.isFunction = cursor.check(TokenKind::KeywordFunction);
+    if (sub.isFunction) {
+        cursor.advance();
+    } else {
+        (void)cursor.expect(TokenKind::KeywordProcedure, "expected 'procedure' or 'function'");
+    }
+
+    if (cursor.check(TokenKind::Identifier)) {
+        sub.name = std::string(cursor.current().lexeme);
+        cursor.advance();
+    } else {
+        (void)cursor.expect(TokenKind::Identifier, "expected subprogram name");
+    }
+
+    sub.params = parseParamList(cursor);
+
+    if (sub.isFunction) {
+        (void)cursor.expect(TokenKind::Colon, "expected ':' before function result type");
+        sub.returnType = parseTypeDenoter(cursor);
+    }
+
+    (void)cursor.expect(TokenKind::Semicolon, "expected ';' after subprogram heading");
+    sub.block = std::make_unique<ast::Block>(parseBlock(cursor));
+    (void)cursor.expect(TokenKind::Semicolon, "expected ';' after subprogram");
+
+    if (sub.block) {
+        sub.range = spanRanges(start.range, sub.block->range);
+    } else {
+        sub.range = start.range;
+    }
+    return sub;
+}
 
 ast::CompoundStmt parseCompoundStmt(TokenCursor &cursor) {
     ast::CompoundStmt compound;
@@ -272,7 +459,7 @@ ast::CompoundStmt parseCompoundStmt(TokenCursor &cursor) {
         compound.statements.push_back(parseStatement(cursor));
         while (cursor.match(TokenKind::Semicolon)) {
             if (cursor.check(TokenKind::KeywordEnd) || cursor.check(TokenKind::EndOfFile) ||
-                cursor.check(TokenKind::Dot)) {
+                cursor.check(TokenKind::Dot) || cursor.check(TokenKind::KeywordUntil)) {
                 break;
             }
             compound.statements.push_back(parseStatement(cursor));
@@ -297,6 +484,99 @@ ast::Stmt parseStatement(TokenCursor &cursor) {
         stmt.kind = ast::StmtKind::Compound;
         stmt.range = compound.range;
         stmt.statements = std::move(compound.statements);
+        return stmt;
+    }
+
+    if (cursor.check(TokenKind::KeywordIf)) {
+        const Token &ifTok = cursor.current();
+        cursor.advance();
+        stmt.kind = ast::StmtKind::If;
+        stmt.condition = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::KeywordThen, "expected 'then'");
+        stmt.thenBranch = std::make_unique<ast::Stmt>(parseStatement(cursor));
+        if (cursor.match(TokenKind::KeywordElse)) {
+            stmt.elseBranch = std::make_unique<ast::Stmt>(parseStatement(cursor));
+        }
+        apollo::common::SourceRange endRange = ifTok.range;
+        if (stmt.elseBranch) {
+            endRange = stmt.elseBranch->range;
+        } else if (stmt.thenBranch) {
+            endRange = stmt.thenBranch->range;
+        } else if (stmt.condition) {
+            endRange = stmt.condition->range;
+        }
+        stmt.range = spanRanges(ifTok.range, endRange);
+        return stmt;
+    }
+
+    if (cursor.check(TokenKind::KeywordWhile)) {
+        const Token &whileTok = cursor.current();
+        cursor.advance();
+        stmt.kind = ast::StmtKind::While;
+        stmt.condition = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::KeywordDo, "expected 'do'");
+        stmt.thenBranch = std::make_unique<ast::Stmt>(parseStatement(cursor));
+        apollo::common::SourceRange endRange = whileTok.range;
+        if (stmt.thenBranch) {
+            endRange = stmt.thenBranch->range;
+        } else if (stmt.condition) {
+            endRange = stmt.condition->range;
+        }
+        stmt.range = spanRanges(whileTok.range, endRange);
+        return stmt;
+    }
+
+    if (cursor.check(TokenKind::KeywordRepeat)) {
+        const Token &repeatTok = cursor.current();
+        cursor.advance();
+        stmt.kind = ast::StmtKind::Repeat;
+
+        if (!cursor.check(TokenKind::KeywordUntil)) {
+            stmt.statements.push_back(parseStatement(cursor));
+            while (cursor.match(TokenKind::Semicolon)) {
+                if (cursor.check(TokenKind::KeywordUntil) || cursor.check(TokenKind::EndOfFile)) {
+                    break;
+                }
+                stmt.statements.push_back(parseStatement(cursor));
+            }
+        }
+        (void)cursor.expect(TokenKind::KeywordUntil, "expected 'until'");
+        stmt.condition = parseExpression(cursor);
+        if (stmt.condition) {
+            stmt.range = spanRanges(repeatTok.range, stmt.condition->range);
+        } else {
+            stmt.range = repeatTok.range;
+        }
+        return stmt;
+    }
+
+    if (cursor.check(TokenKind::KeywordFor)) {
+        const Token &forTok = cursor.current();
+        cursor.advance();
+        stmt.kind = ast::StmtKind::For;
+        if (cursor.check(TokenKind::Identifier)) {
+            stmt.name = std::string(cursor.current().lexeme);
+            cursor.advance();
+        } else {
+            (void)cursor.expect(TokenKind::Identifier, "expected for-loop control variable");
+        }
+        (void)cursor.expect(TokenKind::Assign, "expected ':=' in for statement");
+        stmt.value = parseExpression(cursor);
+        if (cursor.match(TokenKind::KeywordDownto)) {
+            stmt.forDownto = true;
+        } else {
+            (void)cursor.expect(TokenKind::KeywordTo, "expected 'to' or 'downto'");
+        }
+        stmt.forLimit = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::KeywordDo, "expected 'do'");
+        stmt.thenBranch = std::make_unique<ast::Stmt>(parseStatement(cursor));
+        apollo::common::SourceRange endRange = forTok.range;
+        if (stmt.thenBranch) {
+            endRange = stmt.thenBranch->range;
+        } else if (stmt.forLimit) {
+            endRange = stmt.forLimit->range;
+        }
+        stmt.range = spanRanges(forTok.range, endRange);
         return stmt;
     }
 
@@ -336,8 +616,28 @@ ast::Stmt parseStatement(TokenCursor &cursor) {
 
 ast::Block parseBlock(TokenCursor &cursor) {
     ast::Block block;
+    const Token &start = cursor.current();
+
+    if (cursor.check(TokenKind::KeywordConst)) {
+        parseConstSection(cursor, block);
+    }
+    if (cursor.check(TokenKind::KeywordType)) {
+        parseTypeSection(cursor, block);
+    }
+    if (cursor.check(TokenKind::KeywordVar)) {
+        parseVarSection(cursor, block);
+    }
+
+    while (cursor.check(TokenKind::KeywordProcedure) ||
+           cursor.check(TokenKind::KeywordFunction)) {
+        block.subprograms.push_back(parseSubprogram(cursor));
+    }
+
     block.body = parseCompoundStmt(cursor);
     block.range = block.body.range;
+    if (start.kind != TokenKind::KeywordBegin) {
+        block.range = spanRanges(start.range, block.body.range);
+    }
     return block;
 }
 

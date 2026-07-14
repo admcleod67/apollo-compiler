@@ -196,5 +196,157 @@ int main() {
         }
     }
 
+    // var + named type
+    {
+        ScanParse run("var.pas", "program P; var i: integer; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("var fixture should parse");
+        }
+        if (run.program->block.vars.size() != 1 || run.program->block.vars[0].names.size() != 1 ||
+            run.program->block.vars[0].names[0] != "i" ||
+            run.program->block.vars[0].type.name != "integer") {
+            return fail("var AST mismatch");
+        }
+    }
+
+    // const
+    {
+        ScanParse run("const.pas", "program P; const N = 10; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("const fixture should parse");
+        }
+        if (run.program->block.consts.size() != 1 || run.program->block.consts[0].name != "N" ||
+            !run.program->block.consts[0].value ||
+            run.program->block.consts[0].value->text != "10") {
+            return fail("const AST mismatch");
+        }
+    }
+
+    // type alias
+    {
+        ScanParse run("type.pas", "program P; type T = integer; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("type fixture should parse");
+        }
+        if (run.program->block.types.size() != 1 || run.program->block.types[0].name != "T" ||
+            run.program->block.types[0].type.name != "integer") {
+            return fail("type AST mismatch");
+        }
+    }
+
+    // array type
+    {
+        ScanParse run("array.pas", "program P; var a: array [1..10] of integer; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("array fixture should parse");
+        }
+        const auto &type = run.program->block.vars[0].type;
+        if (type.kind != apollo::pascal::ast::TypeKind::Array || !type.indexLow ||
+            type.indexLow->text != "1" || !type.indexHigh || type.indexHigh->text != "10" ||
+            !type.element || type.element->name != "integer") {
+            return fail("array type AST mismatch");
+        }
+    }
+
+    // if / else
+    {
+        ScanParse run("if.pas", "program P; begin if a then b else c; end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("if fixture should parse");
+        }
+        const auto &s = run.program->block.body.statements[0];
+        if (s.kind != StmtKind::If || !s.condition || !s.thenBranch || !s.elseBranch ||
+            s.thenBranch->kind != StmtKind::Call || s.thenBranch->name != "b" ||
+            s.elseBranch->name != "c") {
+            return fail("if AST mismatch");
+        }
+    }
+
+    // while
+    {
+        ScanParse run("while.pas", "program P; begin while a do b; end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("while fixture should parse");
+        }
+        const auto &s = run.program->block.body.statements[0];
+        if (s.kind != StmtKind::While || !s.thenBranch || s.thenBranch->name != "b") {
+            return fail("while AST mismatch");
+        }
+    }
+
+    // repeat
+    {
+        ScanParse run("repeat.pas", "program P; begin repeat a until b; end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("repeat fixture should parse");
+        }
+        const auto &s = run.program->block.body.statements[0];
+        if (s.kind != StmtKind::Repeat || s.statements.size() != 1 || !s.condition ||
+            s.condition->text != "b") {
+            return fail("repeat AST mismatch");
+        }
+    }
+
+    // for to / downto
+    {
+        ScanParse run("for.pas", "program P; begin for i := 1 to 10 do writeln(i); end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("for fixture should parse");
+        }
+        const auto &s = run.program->block.body.statements[0];
+        if (s.kind != StmtKind::For || s.name != "i" || s.forDownto || !s.value ||
+            s.value->text != "1" || !s.forLimit || s.forLimit->text != "10" || !s.thenBranch ||
+            s.thenBranch->kind != StmtKind::Call || s.thenBranch->name != "writeln") {
+            return fail("for AST mismatch");
+        }
+
+        ScanParse down("downto.pas", "program P; begin for i := 10 downto 1 do i; end.");
+        if (down.diagnostics.errorCount() != 0 || !down.program ||
+            !down.program->block.body.statements[0].forDownto) {
+            return fail("downto fixture should set forDownto");
+        }
+    }
+
+    // nested procedure
+    {
+        ScanParse run("proc.pas", "program P; procedure Q; begin end; begin end.");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("procedure fixture should parse");
+        }
+        if (run.program->block.subprograms.size() != 1 ||
+            run.program->block.subprograms[0].isFunction ||
+            run.program->block.subprograms[0].name != "Q" ||
+            !run.program->block.subprograms[0].block) {
+            return fail("procedure AST mismatch");
+        }
+    }
+
+    // file type rejected
+    {
+        ScanParse run("file.pas", "program P; var f: file of integer; begin end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("file type should diagnose");
+        }
+        if (!run.program) {
+            return fail("file type error should not prevent a Program root");
+        }
+    }
+
+    // count.pas shape
+    {
+        ScanParse run("count.pas",
+                      "program Count;\nvar\n  i: integer;\nbegin\n  for i := 1 to 10 do\n    "
+                      "writeln(i);\nend.\n");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("count.pas should parse");
+        }
+        if (run.program->block.vars.size() != 1 ||
+            run.program->block.body.statements[0].kind != StmtKind::For ||
+            !run.program->block.body.statements[0].thenBranch ||
+            run.program->block.body.statements[0].thenBranch->name != "writeln") {
+            return fail("count.pas AST mismatch");
+        }
+    }
+
     return 0;
 }
