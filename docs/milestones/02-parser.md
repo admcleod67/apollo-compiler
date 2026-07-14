@@ -104,12 +104,12 @@ declaration parts as stubs that accept “nothing”).
 
 **Acceptance criteria**
 
-- [ ] `program Hello; begin end.` parses to a stable AST shape (program name + empty block).
-- [ ] Parser never rescans source text; locations come from tokens.
-- [ ] Syntax errors report via `DiagnosticEngine` (`path:line:col: …`).
-- [ ] `apollo-pascal` tests remain free of Gemini.
+- [x] `program Hello; begin end.` parses to a stable AST shape (program name + empty block).
+- [x] Parser never rescans source text; locations come from tokens.
+- [x] Syntax errors report via `DiagnosticEngine` (`path:line:col: …`).
+- [x] `apollo-pascal` tests remain free of Gemini.
 
-**Status:** not started.
+**Status:** completed.
 
 ### Stage 2 — Expressions & simple statements (M2b)
 
@@ -371,7 +371,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Parser framework & program skeleton | not started |
+| Stage 1 — Parser framework & program skeleton | completed |
 | Stage 2 — Expressions & simple statements | not started |
 | Stage 3 — Declarations, control flow & calls | not started |
 | Stage 4 — Symbol table, `--ast`, close-out | not started |
