@@ -6,7 +6,6 @@
 #include "apollo/pascal/AstDump.hpp"
 #include "apollo/pascal/Parser.hpp"
 #include "apollo/pascal/Scanner.hpp"
-#include "apollo/pascal/SymbolTable.hpp"
 #include "apollo/pascal/TokenDump.hpp"
 
 #include <iostream>
@@ -15,7 +14,8 @@
 namespace {
 
 void printUsage(std::ostream &out) {
-    out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>] [--ast <file>]\n"
+    out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>] "
+           "[--ast <file>] [--check <file>]\n"
         << "\n"
         << "Apollo Compiler — multi-language toolchain for the Gemini VM.\n"
         << "\n"
@@ -24,7 +24,8 @@ void printUsage(std::ostream &out) {
         << "  -v, --version      Show version\n"
         << "  -l, --list FILE    Print a numbered source listing\n"
         << "  -t, --tokens FILE  Scan Pascal source and dump the token stream\n"
-        << "  -a, --ast FILE     Parse Pascal source and dump the AST\n";
+        << "  -a, --ast FILE     Parse Pascal source and dump the AST\n"
+        << "  -c, --check FILE   Scan, parse, and semantically analyse Pascal source\n";
 }
 
 int listFile(std::string_view path) {
@@ -64,6 +65,23 @@ int astFile(std::string_view path) {
     if (program) {
         (void)apollo::pascal::analyse(*program, diagnostics);
         apollo::pascal::writeAstDump(std::cout, *program);
+    }
+    diagnostics.write(std::cerr);
+    return diagnostics.errorCount() == 0 ? 0 : 1;
+}
+
+int checkFile(std::string_view path) {
+    const auto loaded = apollo::common::loadSourceFile(path);
+    if (!loaded.file) {
+        std::cerr << "apolloc: " << loaded.error << '\n';
+        return 1;
+    }
+
+    apollo::common::DiagnosticEngine diagnostics(*loaded.file);
+    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    if (program) {
+        (void)apollo::pascal::analyse(*program, diagnostics);
     }
     diagnostics.write(std::cerr);
     return diagnostics.errorCount() == 0 ? 0 : 1;
@@ -109,6 +127,14 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return astFile(argv[2]);
+    }
+    if (arg == "--check" || arg == "-c") {
+        if (argc < 3) {
+            std::cerr << "apolloc: --check requires a file path\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+        return checkFile(argv[2]);
     }
 
     std::cerr << "apolloc: unknown option: " << arg << '\n';

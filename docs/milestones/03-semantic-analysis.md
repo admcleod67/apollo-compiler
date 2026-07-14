@@ -242,12 +242,20 @@ close Milestone 3.
 
 **Acceptance criteria**
 
-- [ ] `--check` on `examples/hello.pas` exits 0 with no stderr errors.
-- [ ] `--check` on a semantic-error fixture exits non-zero and prints diagnostics.
-- [ ] README documents `--list`, `--tokens`, `--ast`, and `--check`.
-- [ ] All Stage 1–4 tests pass under `ctest`.
+- [x] `--check` on `examples/hello.pas` exits 0 with no stderr errors.
+- [x] `--check` on a semantic-error fixture exits non-zero and prints diagnostics.
+- [x] README documents `--list`, `--tokens`, `--ast`, and `--check`.
+- [x] All Stage 1–4 tests pass under `ctest`.
 
-**Status:** not started.
+**Stage 4 notes**
+
+- `apolloc --check` / `-c`: load → scan → parse → `analyse` → diagnostics on stderr;
+  quiet success (exit 0); non-zero on any error-severity diagnostic.
+- Multi-error CLI fixture: `tests/fixtures/check_error.pas`.
+- Toolchain reports `0.3.0` (`PROJECT_VERSION`); cut git tag `v0.3.0` as a release
+  follow-up (not part of this close-out commit).
+
+**Status:** completed.
 
 ### Suggested staging cadence
 
@@ -384,18 +392,19 @@ Default: `--ast` stays dump-oriented; `--check` owns analysis exit policy.
 | Stage 1 — Typed symbols & type resolution | completed |
 | Stage 2 — Use resolution & expression typing | completed |
 | Stage 3 — Statements & console I/O | completed |
-| Stage 4 — `--check`, close-out | not started |
+| Stage 4 — `--check`, close-out | completed |
 
 ---
 
 ## Definition of done (Milestone 3)
 
-- [ ] Stages 1–4 acceptance criteria checked off.
-- [ ] `ctest` green on a clean configure/build.
-- [ ] README documents `apolloc --check`.
-- [ ] `examples/hello.pas` and `examples/count.pas` pass `--check`.
-- [ ] This status table marked completed.
-- [ ] Version policy recorded (default: report `0.3.0`; cut git tag `v0.3.0` as follow-up).
+- [x] Stages 1–4 acceptance criteria checked off.
+- [x] `ctest` green on a clean configure/build.
+- [x] README documents `apolloc --check`.
+- [x] `examples/hello.pas` and `examples/count.pas` pass `--check`.
+- [x] This status table marked completed.
+- [x] Version policy recorded: toolchain reports `0.3.0`; cut git tag `v0.3.0` as
+  follow-up.
 
 ---
 

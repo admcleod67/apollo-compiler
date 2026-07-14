@@ -23,10 +23,10 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 ## Status
 
 **Milestone 1 — Source & scanner infrastructure** is complete.
-**Milestone 2 — Parser** is complete (`0.2.0`).
-**Milestone 3 Stages 1–3** (typed symbols; expression typing; statements & console I/O)
-are complete; Stage 4 (`--check` close-out) of
-[semantic analysis](docs/milestones/03-semantic-analysis.md) is next.
+**Milestone 2 — Parser** is complete.
+**Milestone 3 — Semantic analysis** is complete. The toolchain reports `0.3.0`
+(`PROJECT_VERSION`); cut git tag `v0.3.0` when ready. Next up is
+[Milestone 4 — Intermediate representation](docs/milestones/04-intermediate-representation.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -42,9 +42,9 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--version`, `--help`)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
-- **`apollo-pascal`** — Pascal scanner, parser, symbol table, and dump helpers
+- **`apollo-pascal`** — Pascal scanner, parser, semantic analysis, and dump helpers
 
 ### Listing a source file
 
@@ -76,8 +76,18 @@ Lexical errors go to stderr; the process exits non-zero if any errors were repor
 ./build/src/tools/apolloc --ast examples/hello.pas
 ```
 
-Scans and parses Pascal source, builds a basic symbol table, and prints an indented AST.
+Scans and parses Pascal source, runs semantic analysis, and prints an indented AST.
 Diagnostics go to stderr; the process exits non-zero if any errors were reported.
+
+### Semantic check
+
+```bash
+./build/src/tools/apolloc --check examples/hello.pas
+```
+
+Scans, parses, and semantically analyses Pascal source (no AST dump). Diagnostics go
+to stderr; exit 0 means the program is free of lexical, syntactic, and semantic errors
+reported by the analyser.
 
 ## Layout
 

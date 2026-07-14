@@ -130,3 +130,19 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --ast ${CMAKE_SOURCE_DIR}/tests/fixtures/ast_error.pas
 )
 set_tests_properties(apolloc_ast_error PROPERTIES WILL_FAIL TRUE)
+
+add_test(
+    NAME apolloc_check_hello
+    COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/examples/hello.pas
+)
+
+add_test(
+    NAME apolloc_check_count
+    COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/examples/count.pas
+)
+
+add_test(
+    NAME apolloc_check_error
+    COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/tests/fixtures/check_error.pas
+)
+set_tests_properties(apolloc_check_error PROPERTIES WILL_FAIL TRUE)

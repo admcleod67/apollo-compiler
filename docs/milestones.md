@@ -11,11 +11,11 @@ prefixes sort lexicographically).
 - [Milestone 0 — Project skeleton (completed)](milestones/00-project-skeleton.md)
 - [Milestone 1 — Source & scanner infrastructure (completed)](milestones/01-source-and-scanner-infrastructure.md)
 - [Milestone 2 — Parser (completed)](milestones/02-parser.md)
-- [Milestone 3 — Semantic analysis](milestones/03-semantic-analysis.md)
+- [Milestone 3 — Semantic analysis (completed)](milestones/03-semantic-analysis.md)
 - [Milestone 4 — Intermediate representation](milestones/04-intermediate-representation.md)
 - [Milestone 5 — Code generator](milestones/05-code-generator.md)
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md)
 - [Milestone 7 — Multi-language expansion](milestones/07-multi-language-expansion.md)
 
-**Release checkpoint:** Milestone 2 is complete. The toolchain reports `0.2.0`; cut
-git tag `v0.2.0` when ready.
+**Release checkpoint:** Milestone 3 is complete. The toolchain reports `0.3.0`; cut
+git tag `v0.3.0` when ready.
