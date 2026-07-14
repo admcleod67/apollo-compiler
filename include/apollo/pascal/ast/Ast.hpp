@@ -1,5 +1,5 @@
 //
-// Minimal Pascal AST for Milestone 2 Stage 1 (program / block / compound).
+// Pascal AST for Milestone 2 (program / statements / expressions).
 //
 
 #ifndef APOLLO_PASCAL_AST_AST_HPP
@@ -9,14 +9,73 @@
 
 #include "apollo/common/SourceLocation.hpp"
 
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace apollo::pascal::ast {
 
-/// Placeholder for Stage 2+ statement nodes. Stage 1 leaves the vector empty.
-struct Stmt {
+enum class BinaryOp {
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Div,
+    Mod,
+    And,
+    Or,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+};
+
+enum class UnaryOp {
+    Plus,
+    Minus,
+    Not,
+};
+
+enum class ExprKind {
+    Identifier,
+    IntegerLiteral,
+    RealLiteral,
+    StringLiteral,
+    CharLiteral,
+    Unary,
+    Binary,
+    Call,
+    Group,
+};
+
+struct Expr {
+    ExprKind kind{};
     apollo::common::SourceRange range{};
+    /// Identifier spelling or literal lexeme (owned copy of token lexeme).
+    std::string text;
+    UnaryOp unaryOp{};
+    BinaryOp binaryOp{};
+    std::unique_ptr<Expr> left;
+    std::unique_ptr<Expr> right;
+    std::vector<std::unique_ptr<Expr>> args;
+};
+
+enum class StmtKind {
+    Compound,
+    Assign,
+    Call,
+};
+
+struct Stmt {
+    StmtKind kind{};
+    apollo::common::SourceRange range{};
+    /// Assign LHS or call callee.
+    std::string name;
+    std::unique_ptr<Expr> value;
+    std::vector<std::unique_ptr<Expr>> args;
+    std::vector<Stmt> statements;
 };
 
 struct CompoundStmt {

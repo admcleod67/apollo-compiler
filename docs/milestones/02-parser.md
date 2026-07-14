@@ -137,12 +137,28 @@ statement forms so assignment and simple calls can appear inside `begin`…`end`
 
 **Acceptance criteria**
 
-- [ ] Expressions respect the documented precedence table.
-- [ ] Assignment and call statements populate the compound statement list.
-- [ ] Malformed expressions emit diagnostics and recover at statement boundaries when
+- [x] Expressions respect the documented precedence table.
+- [x] Assignment and call statements populate the compound statement list.
+- [x] Malformed expressions emit diagnostics and recover at statement boundaries when
       cheap (e.g. sync on `;` / `end`).
 
-**Status:** not started.
+**Status:** completed.
+
+### Expression precedence (Stage 2)
+
+Classic Pascal factor / term / simple-expression / expression layering:
+
+| Level | Operators | Associativity |
+|-------|-----------|---------------|
+| Primary | literals, identifier, `(expr)`, call | — |
+| Unary | `not`, unary `+` `-` | right |
+| Multiplicative | `*` `/` `div` `mod` `and` | left |
+| Additive | `+` `-` `or` | left |
+| Relational | `=` `<>` `<` `<=` `>` `>=` | one optional op (non-chaining) |
+
+Example: `1+2*3` parses as `+(1, *(2,3))`. Example: `not a and b` parses as `(not a) and b`.
+
+`examples/hello.pas` (`writeln(...)` call) parses successfully at Stage 2.
 
 ### Stage 3 — Declarations, control flow & calls (M2c)
 
@@ -372,7 +388,7 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Parser framework & program skeleton | completed |
-| Stage 2 — Expressions & simple statements | not started |
+| Stage 2 — Expressions & simple statements | completed |
 | Stage 3 — Declarations, control flow & calls | not started |
 | Stage 4 — Symbol table, `--ast`, close-out | not started |
 
