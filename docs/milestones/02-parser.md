@@ -1,6 +1,6 @@
 ← [Project milestones index](../milestones.md)
 
-## Milestone 2 — Parser
+## Milestone 2 — Parser (completed)
 
 This document defines the **Milestone 2** Pascal parser for Apollo: a recursive-descent
 parser that consumes the Milestone 1 token stream, builds an AST, performs lightweight
@@ -239,13 +239,13 @@ Exact formatting is an implementation choice; keep it stable enough for tests.
 
 **Acceptance criteria**
 
-- [ ] Duplicate declarations in one scope diagnose.
-- [ ] `--ast` on a clean example exits 0 and prints a non-empty dump.
-- [ ] `--ast` on a syntax-error fixture exits non-zero and prints diagnostics.
-- [ ] README documents `--list`, `--tokens`, and `--ast`.
-- [ ] All Stage 1–4 tests pass under `ctest`.
+- [x] Duplicate declarations in one scope diagnose.
+- [x] `--ast` on a clean example exits 0 and prints a non-empty dump.
+- [x] `--ast` on a syntax-error fixture exits non-zero and prints diagnostics.
+- [x] README documents `--list`, `--tokens`, and `--ast`.
+- [x] All Stage 1–4 tests pass under `ctest`.
 
-**Status:** not started.
+**Status:** completed.
 
 ### Suggested staging cadence
 
@@ -392,19 +392,21 @@ These are design targets, not frozen APIs. Names may adjust during implementatio
 | Stage 1 — Parser framework & program skeleton | completed |
 | Stage 2 — Expressions & simple statements | completed |
 | Stage 3 — Declarations, control flow & calls | completed |
-| Stage 4 — Symbol table, `--ast`, close-out | not started |
+| Stage 4 — Symbol table, `--ast`, close-out | completed |
+
+Milestone 2 Stages 1–4 are implemented. The toolchain reports `0.2.0`. Cut git tag
+`v0.2.0` as a separate release step.
 
 ---
 
 ## Definition of done (Milestone 2)
 
-- [ ] Stages 1–4 acceptance criteria checked off.
-- [ ] `ctest` green on a clean configure/build.
-- [ ] README documents `apolloc --ast`.
-- [ ] `examples/hello.pas` parses under `--ast`.
-- [ ] This status table marked completed.
-- [ ] Follow-on version / tag policy decided when closing (may stay `0.1.x` or bump —
-      record the choice here when tagging).
+- [x] Stages 1–4 acceptance criteria checked off.
+- [x] `ctest` green on a clean configure/build.
+- [x] README documents `apolloc --ast`.
+- [x] `examples/hello.pas` parses under `--ast`.
+- [x] This status table marked completed.
+- [x] Version policy: toolchain reports `0.2.0`; cut git tag `v0.2.0` as release follow-up.
 
 ---
 

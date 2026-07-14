@@ -64,13 +64,26 @@ target_link_libraries(apollo_pascal_parser_test
 
 target_compile_features(apollo_pascal_parser_test PRIVATE cxx_std_20)
 
+add_executable(apollo_pascal_symbol_test
+    pascal_symbol_test.cpp
+)
+
+target_link_libraries(apollo_pascal_symbol_test
+    PRIVATE
+        apollo::pascal
+)
+
+target_compile_features(apollo_pascal_symbol_test PRIVATE cxx_std_20)
+
 add_test(NAME apollo_smoke_test COMMAND apollo_smoke_test)
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apollo_location_diagnostics_test COMMAND apollo_location_diagnostics_test)
 add_test(NAME apollo_pascal_scanner_test COMMAND apollo_pascal_scanner_test)
 add_test(NAME apollo_token_dump_test COMMAND apollo_token_dump_test)
 add_test(NAME apollo_pascal_parser_test COMMAND apollo_pascal_parser_test)
+add_test(NAME apollo_pascal_symbol_test COMMAND apollo_pascal_symbol_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
+set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.2.0")
 
 add_test(
     NAME apolloc_list_fixture
@@ -93,3 +106,15 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --tokens ${CMAKE_SOURCE_DIR}/tests/fixtures/tokens_error.pas
 )
 set_tests_properties(apolloc_tokens_error PROPERTIES WILL_FAIL TRUE)
+
+add_test(
+    NAME apolloc_ast_hello
+    COMMAND $<TARGET_FILE:apolloc> --ast ${CMAKE_SOURCE_DIR}/examples/hello.pas
+)
+set_tests_properties(apolloc_ast_hello PROPERTIES PASS_REGULAR_EXPRESSION "Program Hello")
+
+add_test(
+    NAME apolloc_ast_error
+    COMMAND $<TARGET_FILE:apolloc> --ast ${CMAKE_SOURCE_DIR}/tests/fixtures/ast_error.pas
+)
+set_tests_properties(apolloc_ast_error PROPERTIES WILL_FAIL TRUE)

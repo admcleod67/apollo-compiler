@@ -22,9 +22,10 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 ## Status
 
-**Milestone 1 — Source & scanner infrastructure** is complete (`0.1.0`).
-**Milestone 2 — Parser** Stages 1–3 are complete (including declarations and control flow);
-Stage 4 (`--ast`, symbol table) follows in [docs/milestones/02-parser.md](docs/milestones/02-parser.md).
+**Milestone 1 — Source & scanner infrastructure** is complete.
+**Milestone 2 — Parser** is complete. The toolchain reports `0.2.0` (`PROJECT_VERSION`);
+cut git tag `v0.2.0` when ready. Next up is
+[Milestone 3 — Semantic analysis](docs/milestones/03-semantic-analysis.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -40,9 +41,9 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--version`, `--help`)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
-- **`apollo-pascal`** — Pascal scanner and token dump helpers
+- **`apollo-pascal`** — Pascal scanner, parser, symbol table, and dump helpers
 
 ### Listing a source file
 
@@ -67,6 +68,15 @@ Prints a numbered listing (width-4 line numbers), for example:
 
 Scans Pascal source and prints one token per line (`line:col-endLine:endCol  Kind  lexeme`).
 Lexical errors go to stderr; the process exits non-zero if any errors were reported.
+
+### Dumping the AST
+
+```bash
+./build/src/tools/apolloc --ast examples/hello.pas
+```
+
+Scans and parses Pascal source, builds a basic symbol table, and prints an indented AST.
+Diagnostics go to stderr; the process exits non-zero if any errors were reported.
 
 ## Layout
 

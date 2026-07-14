@@ -2,7 +2,10 @@
 #include "apollo/common/Listing.hpp"
 #include "apollo/common/SourceFile.hpp"
 #include "apollo/common/Version.hpp"
+#include "apollo/pascal/AstDump.hpp"
+#include "apollo/pascal/Parser.hpp"
 #include "apollo/pascal/Scanner.hpp"
+#include "apollo/pascal/SymbolTable.hpp"
 #include "apollo/pascal/TokenDump.hpp"
 
 #include <iostream>
@@ -11,7 +14,7 @@
 namespace {
 
 void printUsage(std::ostream &out) {
-    out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>]\n"
+    out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>] [--ast <file>]\n"
         << "\n"
         << "Apollo Compiler — multi-language toolchain for the Gemini VM.\n"
         << "\n"
@@ -19,7 +22,8 @@ void printUsage(std::ostream &out) {
         << "  -h, --help         Show this help\n"
         << "  -v, --version      Show version\n"
         << "  -l, --list FILE    Print a numbered source listing\n"
-        << "  -t, --tokens FILE  Scan Pascal source and dump the token stream\n";
+        << "  -t, --tokens FILE  Scan Pascal source and dump the token stream\n"
+        << "  -a, --ast FILE     Parse Pascal source and dump the AST\n";
 }
 
 int listFile(std::string_view path) {
@@ -43,6 +47,24 @@ int tokensFile(std::string_view path) {
     const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
     diagnostics.write(std::cerr);
     apollo::pascal::writeTokenDump(std::cout, stream);
+    return diagnostics.errorCount() == 0 ? 0 : 1;
+}
+
+int astFile(std::string_view path) {
+    const auto loaded = apollo::common::loadSourceFile(path);
+    if (!loaded.file) {
+        std::cerr << "apolloc: " << loaded.error << '\n';
+        return 1;
+    }
+
+    apollo::common::DiagnosticEngine diagnostics(*loaded.file);
+    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    if (program) {
+        apollo::pascal::buildSymbolTable(*program, diagnostics);
+        apollo::pascal::writeAstDump(std::cout, *program);
+    }
+    diagnostics.write(std::cerr);
     return diagnostics.errorCount() == 0 ? 0 : 1;
 }
 
@@ -78,6 +100,14 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return tokensFile(argv[2]);
+    }
+    if (arg == "--ast" || arg == "-a") {
+        if (argc < 3) {
+            std::cerr << "apolloc: --ast requires a file path\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+        return astFile(argv[2]);
     }
 
     std::cerr << "apolloc: unknown option: " << arg << '\n';
