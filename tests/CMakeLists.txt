@@ -83,7 +83,7 @@ add_test(NAME apollo_token_dump_test COMMAND apollo_token_dump_test)
 add_test(NAME apollo_pascal_parser_test COMMAND apollo_pascal_parser_test)
 add_test(NAME apollo_pascal_symbol_test COMMAND apollo_pascal_symbol_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
-set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.2.0")
+set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.3.0")
 
 add_test(
     NAME apolloc_list_fixture
