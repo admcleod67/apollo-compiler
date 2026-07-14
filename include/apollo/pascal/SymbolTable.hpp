@@ -59,7 +59,7 @@ private:
 };
 
 /// Seed predefined types and I/O builtins, then collect typed declarations.
-[[nodiscard]] SymbolTable buildSymbolTable(const ast::Program &program,
+[[nodiscard]] SymbolTable buildSymbolTable(ast::Program &program,
                                            apollo::common::DiagnosticEngine &diagnostics);
 
 } // namespace apollo::pascal

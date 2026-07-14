@@ -8,6 +8,7 @@
 #pragma once
 
 #include "apollo/common/SourceLocation.hpp"
+#include "apollo/pascal/Type.hpp"
 
 #include <memory>
 #include <optional>
@@ -61,6 +62,8 @@ struct Expr {
     std::unique_ptr<Expr> left;
     std::unique_ptr<Expr> right;
     std::vector<std::unique_ptr<Expr>> args;
+    /// Filled by semantic analyse; null until then.
+    apollo::pascal::TypePtr type;
 };
 
 enum class TypeKind {

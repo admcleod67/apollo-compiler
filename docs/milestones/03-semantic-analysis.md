@@ -148,11 +148,27 @@ well-typed node (or mark error types and continue).
 
 **Acceptance criteria**
 
-- [ ] Undeclared identifiers in expressions diagnose.
-- [ ] Documented subset of operators produces the expected result types.
-- [ ] Type errors do not abort the process; analysis continues where cheap.
+- [x] Undeclared identifiers in expressions diagnose.
+- [x] Documented subset of operators produces the expected result types.
+- [x] Type errors do not abort the process; analysis continues where cheap.
 
-**Status:** not started.
+**Stage 2 notes**
+
+- Inferred types are stored on `ast::Expr::type` (`TypePtr`); statements are not typed.
+- Entry point: `analyse(Program&, DiagnosticEngine&) -> SymbolTable` in
+  `semantic/Analyse.cpp` (declares while typing bodies before `popScope`).
+  `buildSymbolTable` forwards to `analyse`.
+- Predefined consts `true` / `false` (Boolean) are seeded in the outermost scope.
+- Operator result rules (Stage 2):
+  - `+` `-` `*`: both Integer → Integer; numeric mix with Real → Real
+  - `/`: numeric → Real
+  - `div` / `mod`: both Integer → Integer
+  - Unary `+`/`-`: Integer or Real → same; `not`: Boolean → Boolean
+  - `and` / `or`: Boolean → Boolean
+  - Relationals: numeric pairs or same Char/Boolean/Integer/Real → Boolean
+  - If either operand is Error, result is Error with no cascade diag
+
+**Status:** completed.
 
 ### Stage 3 — Statements & console I/O (M3c)
 
@@ -243,14 +259,13 @@ Design targets, not frozen APIs.
 | `Array` | Index bounds (static exprs) + element type |
 | `Error` | Poison type for recovery |
 
-**Compatibility (defaults):**
+**Compatibility (Stage 2 expression rules):**
 
-- Assignment: same type, or integer→real widening if adopted.
-- Arithmetic: numeric operands; result integer if both integer, else real (document).
+- Arithmetic `+` `-` `*`: numeric operands; Integer if both Integer, else Real.
+- `/`: numeric → Real. `div` / `mod`: Integer operands → Integer.
 - Relational: compatible operands → `boolean`.
-- Boolean ops: `boolean` operands → `boolean`.
-
-Expand / tighten the table in-tree when Stage 2 lands.
+- Boolean ops (`and` / `or` / `not`): `boolean` operands → `boolean`.
+- Assignment widening and statement rules remain Stage 3.
 
 ---
 
@@ -349,7 +364,7 @@ Default: `--ast` stays dump-oriented; `--check` owns analysis exit policy.
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Typed symbols & type resolution | completed |
-| Stage 2 — Use resolution & expression typing | not started |
+| Stage 2 — Use resolution & expression typing | completed |
 | Stage 3 — Statements & console I/O | not started |
 | Stage 4 — `--check`, close-out | not started |
 

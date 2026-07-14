@@ -4,6 +4,7 @@ add_library(apollo-pascal
     AstDump.cpp
     semantic/Type.cpp
     semantic/SymbolTable.cpp
+    semantic/Analyse.cpp
     parser/TokenCursor.cpp
     parser/Parser.cpp
 )

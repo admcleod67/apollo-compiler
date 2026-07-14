@@ -2,6 +2,7 @@
 #include "apollo/common/Listing.hpp"
 #include "apollo/common/SourceFile.hpp"
 #include "apollo/common/Version.hpp"
+#include "apollo/pascal/Analyse.hpp"
 #include "apollo/pascal/AstDump.hpp"
 #include "apollo/pascal/Parser.hpp"
 #include "apollo/pascal/Scanner.hpp"
@@ -61,7 +62,7 @@ int astFile(std::string_view path) {
     const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
     const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
     if (program) {
-        (void)apollo::pascal::buildSymbolTable(*program, diagnostics);
+        (void)apollo::pascal::analyse(*program, diagnostics);
         apollo::pascal::writeAstDump(std::cout, *program);
     }
     diagnostics.write(std::cerr);

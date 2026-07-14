@@ -24,7 +24,8 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 **Milestone 1 — Source & scanner infrastructure** is complete.
 **Milestone 2 — Parser** is complete (`0.2.0`).
-**Milestone 3 Stage 1** (typed symbols & type resolution) is complete; Stages 2–4 of
+**Milestone 3 Stages 1–2** (typed symbols; use-resolution & expression typing) are
+complete; Stages 3–4 of
 [semantic analysis](docs/milestones/03-semantic-analysis.md) are next.
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
