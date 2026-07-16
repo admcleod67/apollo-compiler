@@ -234,11 +234,34 @@ produces runnable bytecode.
 
 **Acceptance criteria**
 
-- [ ] A clean straight-line / hello-shaped module emits `.tbc` with zero diagnostics.
-- [ ] Emitted text contains expected console and halt opcodes.
-- [ ] M4 IR tests remain green.
+- [x] A clean straight-line / hello-shaped module emits `.tbc` with zero diagnostics.
+- [x] Emitted text contains expected console and halt opcodes.
+- [x] M4 IR tests remain green.
 
-**Status:** not started.
+**Stage 2 notes**
+
+- **API:** `apollo::codegen::emitTbc(const ir::Module &, DiagnosticEngine &) → string` and
+  `writeTbc` in `include/apollo/codegen/Emit.hpp` + `src/codegen/Emit.cpp`.
+  `apollo-codegen` now PUBLIC-links `apollo::ir` and `apollo::common`.
+- **Gate:** Stage 2 emits only when the module has exactly one function named `main` with
+  exactly one block whose terminator is `Return`. Multi-block CFGs, extra functions, or
+  `Op::Call` report an Error diagnostic and produce no `.tbc` (Stage 3).
+- **Labels / halt:** entry label is `main:`; `main`'s `Return` becomes `HALT` (not
+  `RETURN`).
+- **Mangling:** locals/params → `STORE_VAR` / `LOAD_VAR` names `<function>$<decl.name>`
+  (e.g. `main$x`). Spill slots for IR temps → `main$t<N>`.
+- **Stack discipline:** after each value-producing instruction the result is **eagerly
+  spilled** to `main$t<N>` so later operands can always be reloaded. Binary ops emit
+  `LOAD_VAR` left, `LOAD_VAR` right, then the Gemini opcode (stack `[left, right]`).
+  `ensureOnTop` reloads a spilled temp before `STORE_VAR` / `PRINT_VAL`.
+- **Unary / logic:** `Neg` → `PUSH_INT 0` + load + `SUB`; `Not` → load + `PUSH_INT 0` +
+  `EQ`; `And` → `MUL` on 0/1; `Or` → `ADD` then `NE` 0 (nonzero → 1).
+- **Console binding (v1):** `write` / `writeln` → per-arg `PRINT_VAL` (+ `PRINT_EOL` for
+  writeln); `read` / `readln` → `INPUT_INT` or `INPUT_STR` by result `IrType` (M4 emits
+  one runtime call per variable).
+- **Unsupported in Stage 2:** `ConstF64`, `Mod`, `Copy`, `Call`, branches — diagnosed.
+
+**Status:** completed.
 
 ### Stage 3 — Control flow & calling convention (M5c)
 
@@ -403,7 +426,7 @@ Carried into codegen awareness (not all must close in M5):
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Codegen skeleton & `.tbc` writer | completed |
-| Stage 2 — Straight-line IR emission | not started |
+| Stage 2 — Straight-line IR emission | completed |
 | Stage 3 — Control flow & calling convention | not started |
 | Stage 4 — `--emit`, close-out | not started |
 

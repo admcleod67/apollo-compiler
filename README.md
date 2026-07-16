@@ -26,7 +26,8 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 2 — Parser** is complete.
 **Milestone 3 — Semantic analysis** is complete (`0.3.0`).
 **Milestone 4 — Intermediate representation** is complete (`0.4.0`).
-**Milestone 5 Stage 1** (shared `.tbc` writer / `apollo-codegen`) is complete; Stages 2–4 of
+**Milestone 5 Stages 1–2** (shared `.tbc` writer and straight-line IR emission) are
+complete; Stages 3–4 of
 [Milestone 5 — Code generator](docs/milestones/05-code-generator.md)
 are next. Toolchain version is `0.5.0` (`PROJECT_VERSION`).
 
@@ -47,7 +48,7 @@ Artifacts:
 - **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
 - **`apollo-ir`** — shared language-neutral intermediate representation
-- **`apollo-codegen`** — Gemini `.tbc` text bytecode writer
+- **`apollo-codegen`** — Gemini `.tbc` text bytecode writer and IR emitter
 - **`apollo-pascal`** — Pascal scanner, parser, semantic analysis, IR lowering, and dump helpers
 
 ### Listing a source file
