@@ -6,6 +6,12 @@ This document defines **Milestone 6**: run Apollo-compiled programs on a host OS
 without the full Gemini Pick environment, by decoupling a portable VM/runtime from
 Pick-specific shell and filesystem assumptions.
 
+**Current status:** the initial standalone proof is complete. Gemini Pick System
+Milestone 19 Stages 1–2 provide the Pick-independent `gemini-vm` runner, and the
+Apollo `hello.pas` and `count.pas` examples run successfully through it using the
+core `PRINT_*` opcodes emitted by Milestone 5. Migration of Pascal builtins to a
+`CALL_FUNC` language module remains follow-on work.
+
 It complements:
 
 - [Project milestones](../milestones.md)
@@ -48,8 +54,10 @@ compiled runs on that portable target — not that Apollo owns or reimplements t
 Gemini’s multi-language runtime (e.g. Milestone 11 / `CALL_FUNC` + boot-time module
 loader) is designed so **new languages do not require rebuilding the VM**. Modules are
 discovered and `dlopen`’d from a configured directory; Gemini publishes the ABI and
-namespace/function IDs. Apollo codegen emits `CALL_FUNC` for builtins against that
-contract.
+namespace/function IDs. Apollo Milestone 5 currently maps console builtins to core
+`PRINT_*` / `INPUT_*` opcodes for bootstrap compatibility. A later codegen binding can
+emit `CALL_FUNC` against Gemini’s published Pascal namespace and function IDs without
+changing the Pascal front-end or Apollo IR.
 
 **v1 builtins in Apollo today** are console only: `write`, `writeln`, `read`, `readln`.
 There is no Pascal math library (`sin`, `sqrt`, …) yet. User `procedure` / `function`
@@ -57,7 +65,8 @@ code is ordinary program code inside `.tbc`, not language-module entry points.
 
 | Horizon | Where the Pascal I/O module lives |
 |---------|-----------------------------------|
-| **M6 spike** | Acceptable to implement a minimal Pascal (or shared) I/O module **in gemini-system** so `gemini-vm` + hello/count can prove the path without waiting on Apollo packaging (Gemini Milestone 19 §2.5) |
+| **M6 bootstrap proof** | No module is required: Apollo’s v1 `PRINT_*` / `INPUT_*` bytecode runs directly on `gemini-vm`. |
+| **Module spike** | Acceptable to implement a minimal Pascal (or shared) I/O module **in gemini-system** to prove the `CALL_FUNC` path without waiting on Apollo packaging (Gemini Milestone 19 §2.5). |
 | **Steady state** | Build and ship the Pascal helper module with **apollo-compiler** (e.g. under `src/runtime/`) against Gemini’s published module ABI; install into Gemini’s module path. Gemini remains **ABI + loader**, not the catalogue of every outside language’s implementations |
 
 Rationale: keeping every front-end’s builtins forever inside gemini-system couples
@@ -98,6 +107,30 @@ Milestone 6 should start with a **review and spike**, not a full rewrite:
    extraction as follow-on Gemini work. If not, the review becomes the backlog for
    disentangling.
 
+### Verified standalone path
+
+With both projects built, Apollo output can be streamed directly to the runner without
+creating an intermediate file:
+
+```bash
+./build/src/tools/apolloc --emit examples/hello.pas \
+  | ../pick-system/build/src/gemini-vm /dev/stdin
+
+./build/src/tools/apolloc --emit examples/count.pas \
+  | ../pick-system/build/src/gemini-vm /dev/stdin
+```
+
+The first command prints `Hello, Gemini!`; the second prints the integers 1 through 10.
+Both exit successfully. For a portable workflow that does not rely on `/dev/stdin`,
+write the compiler output to a `.tbc` file and pass that path to `gemini-vm`:
+
+```bash
+./build/src/tools/apolloc --emit examples/hello.pas > hello.tbc
+../pick-system/build/src/gemini-vm hello.tbc
+```
+
+These examples use only Gemini core VM opcodes, so `--modules` is not required.
+
 ---
 
 ## Why console-only Pascal helps
@@ -134,15 +167,17 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 
 ---
 
-## Success criteria (draft)
+## Success criteria
 
-- [ ] Review recorded: Pick vs portable boundaries for the current VM.
-- [ ] Host-only (or clearly portable) build target exists in gemini-system
-  (`gemini-vm` / Gemini Milestone 19).
-- [ ] Pascal I/O module available (Gemini spike **or** Apollo-built) with
-  namespace/function IDs matching Milestone 5 **`CALL_FUNC`** emission.
-- [ ] An Apollo-compiled Pascal program with console I/O only runs on that target.
-- [ ] Apollo docs / README note how to run the standalone path once available.
+- [x] Review recorded: Pick vs portable boundaries for the current VM (Gemini
+  Milestone 19 Stage 1 and `pick-system/docs/vm.md`).
+- [x] Host-only build target exists in Gemini Pick System (`gemini-vm`, Milestone 19
+  Stage 2).
+- [x] Apollo’s bootstrap console binding (`PRINT_*` / `INPUT_*`) runs without a
+  language module.
+- [x] Apollo-compiled `examples/hello.pas` and `examples/count.pas` run successfully
+  on `gemini-vm`.
+- [x] This document records how to run the standalone path.
 
 ---
 
@@ -150,6 +185,8 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 
 - Filesystem library extraction in gemini-system.
 - Richer host I/O for both BASIC and future Pascal file support.
+- Switch Apollo’s console binding from bootstrap `PRINT_*` / `INPUT_*` opcodes to
+  Gemini namespace 3 `CALL_FUNC` IDs once the Pascal module handlers are available.
 - Move Pascal I/O module ownership to apollo-compiler if the M6 / Gemini M19 spike
   lived in gemini-system (steady-state drop-in module).
 - Optional later extraction of the portable runtime into a shared package/repo if
