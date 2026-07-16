@@ -66,6 +66,7 @@ text from the book is used directly; only the conceptual methodology informs the
 ## See also
 
 - [Milestones](milestones.md) — roadmap index
-- [Milestone 1 — Source & scanner](milestones/01-source-and-scanner-infrastructure.md) — completed (M1)
-- [Milestone 2 — Parser](milestones/02-parser.md) — completed (M2)
+- [Milestone 4 — Intermediate representation](milestones/04-intermediate-representation.md) — completed (M4)
+- [Milestone 5 — Code generator](milestones/05-code-generator.md) — next (`.tbc` emission)
+- [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md)
 - Gemini VM documentation: `gemini-system/docs/vm.md` (sibling repository)
