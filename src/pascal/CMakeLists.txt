@@ -7,6 +7,7 @@ add_library(apollo-pascal
     semantic/Analyse.cpp
     parser/TokenCursor.cpp
     parser/Parser.cpp
+    ir/Lower.cpp
 )
 
 add_library(apollo::pascal ALIAS apollo-pascal)
@@ -19,6 +20,7 @@ target_include_directories(apollo-pascal
 target_link_libraries(apollo-pascal
     PUBLIC
         apollo::common
+        apollo::ir
 )
 
 target_compile_features(apollo-pascal PUBLIC cxx_std_20)

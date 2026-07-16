@@ -41,6 +41,8 @@ enum class Op {
     Mod,
     Neg,
     Not,
+    And,
+    Or,
     CmpEq,
     CmpNe,
     CmpLt,

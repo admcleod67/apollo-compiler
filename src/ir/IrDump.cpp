@@ -65,6 +65,10 @@ const char *opName(Op op) {
         return "neg";
     case Op::Not:
         return "not";
+    case Op::And:
+        return "and";
+    case Op::Or:
+        return "or";
     case Op::CmpEq:
         return "cmp.eq";
     case Op::CmpNe:
@@ -146,6 +150,8 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
     case Op::Mul:
     case Op::Div:
     case Op::Mod:
+    case Op::And:
+    case Op::Or:
     case Op::CmpEq:
     case Op::CmpNe:
     case Op::CmpLt:

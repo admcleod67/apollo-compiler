@@ -97,6 +97,18 @@ target_link_libraries(apollo_pascal_analyse_test
 
 target_compile_features(apollo_pascal_analyse_test PRIVATE cxx_std_20)
 
+add_executable(pascal_ir_lower_test
+    pascal_ir_lower_test.cpp
+)
+
+target_link_libraries(pascal_ir_lower_test
+    PRIVATE
+        apollo::pascal
+        apollo::ir
+)
+
+target_compile_features(pascal_ir_lower_test PRIVATE cxx_std_20)
+
 add_test(NAME apollo_smoke_test COMMAND apollo_smoke_test)
 add_test(NAME apollo_ir_test COMMAND apollo_ir_test)
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
@@ -106,6 +118,7 @@ add_test(NAME apollo_token_dump_test COMMAND apollo_token_dump_test)
 add_test(NAME apollo_pascal_parser_test COMMAND apollo_pascal_parser_test)
 add_test(NAME apollo_pascal_symbol_test COMMAND apollo_pascal_symbol_test)
 add_test(NAME apollo_pascal_analyse_test COMMAND apollo_pascal_analyse_test)
+add_test(NAME pascal_ir_lower_test COMMAND pascal_ir_lower_test)
 add_test(NAME apolloc_version COMMAND $<TARGET_FILE:apolloc> --version)
 set_tests_properties(apolloc_version PROPERTIES PASS_REGULAR_EXPRESSION "apolloc 0.4.0")
 

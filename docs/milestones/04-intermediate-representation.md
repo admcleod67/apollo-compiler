@@ -155,11 +155,42 @@ straight-line compounds (no branching yet beyond what a call implies).
 
 **Acceptance criteria**
 
-- [ ] A clean straight-line Pascal fixture lowers with zero diagnostics and a stable dump.
-- [ ] Builtin `writeln` with a string (hello-shaped) appears in IR in the chosen form.
-- [ ] M3 analyse tests remain green.
+- [x] A clean straight-line Pascal fixture lowers with zero diagnostics and a stable dump.
+- [x] Builtin `writeln` with a string (hello-shaped) appears in IR in the chosen form.
+- [x] M3 analyse tests remain green.
 
-**Status:** not started.
+**Stage 2 notes**
+
+- Location: `include/apollo/pascal/ir/Lower.hpp` + `src/pascal/ir/Lower.cpp`, exposing
+  `apollo::pascal::ir::lowerToIr(const ast::Program &, const SymbolTable &,
+  DiagnosticEngine &) → apollo::ir::Module` (const refs — lowering only reads M3 results).
+  `apollo-pascal` now links `apollo::ir` publicly.
+- **Module/Function shape:** `Module.name = program.name` (as spelled); the whole program
+  block body lowers into one `Function` literally named `main` (`Void` return, one `entry`
+  block). User-declared procedures/functions are **not** lowered yet — call sites still
+  emit a `Call` instruction referencing the name; their bodies land in Stage 3.
+- **Type mapping:** `Integer→I32`, `Real→F64`, `Boolean→Bool`, `Char→Char`, `String→StringRef`,
+  `Array→ArrayRef`, `Error→Error` (`Alias` is peeled by `canonicalTag` first).
+- **Locals vs consts:** `block.vars` become `Function.locals` with a lowerer-local
+  `foldedName → slot` map for `LoadLocal`/`StoreLocal`. `SymbolTable::Symbol` has no value
+  field, so `const` declarations are **inlined at each use** from a `foldedName → literal
+  Expr*` map built from `block.consts` (fresh temp per use, no CSE); `true`/`false` are
+  special-cased since they have no backing `ConstDecl`.
+- **Quoted literal decoding:** the scanner discards its decoded string, so `Expr::text` for
+  string/char literals is still raw source (`'It''s'`); `decodeQuotedLexeme` in `Lower.cpp`
+  strips the outer quotes and un-doubles `''`.
+- **New shared ops:** `Op::And` / `Op::Or` added to `apollo::ir` (dump `and`/`or`) — Stage 1
+  omitted logical ops needed for Pascal boolean binaries. `Slash` and `Div` both map to
+  `Op::Div`, disambiguated only by the result `IrType` (F64 vs I32).
+- **Console I/O shape:** `write`/`writeln` lower to one `CallRuntime{text=foldedName}` per
+  statement with all argument temps in `args`. `read`/`readln` lower to one `CallRuntime`
+  **per variable argument** (no `args`), each immediately followed by a `StoreLocal` into
+  that variable's slot (only `read` needs a destination per argument).
+- **Unsupported constructs:** `if`/`while`/`repeat`/`for` report a diagnostic
+  ("control flow not lowered until Milestone 4 Stage 3") and are skipped rather than
+  asserting, so accidental use is visible but non-fatal.
+
+**Status:** completed.
 
 ### Stage 3 — Control flow & subprograms (M4c)
 
@@ -354,7 +385,7 @@ sooner).
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Shared IR model & dump | completed |
-| Stage 2 — Straight-line Pascal lowering | not started |
+| Stage 2 — Straight-line Pascal lowering | completed |
 | Stage 3 — Control flow & subprograms | not started |
 | Stage 4 — `--ir`, close-out | not started |
 
