@@ -9,6 +9,17 @@ target_link_libraries(apollo_smoke_test
 
 target_compile_features(apollo_smoke_test PRIVATE cxx_std_20)
 
+add_executable(apollo_ir_test
+    apollo_ir_test.cpp
+)
+
+target_link_libraries(apollo_ir_test
+    PRIVATE
+        apollo::ir
+)
+
+target_compile_features(apollo_ir_test PRIVATE cxx_std_20)
+
 add_executable(apollo_source_listing_test
     source_listing_test.cpp
 )
@@ -87,6 +98,7 @@ target_link_libraries(apollo_pascal_analyse_test
 target_compile_features(apollo_pascal_analyse_test PRIVATE cxx_std_20)
 
 add_test(NAME apollo_smoke_test COMMAND apollo_smoke_test)
+add_test(NAME apollo_ir_test COMMAND apollo_ir_test)
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apollo_location_diagnostics_test COMMAND apollo_location_diagnostics_test)
 add_test(NAME apollo_pascal_scanner_test COMMAND apollo_pascal_scanner_test)

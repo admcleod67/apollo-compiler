@@ -107,11 +107,23 @@ format.
 
 **Acceptance criteria**
 
-- [ ] IR library builds and a dump-roundtrip-style unit test passes.
-- [ ] Documented opcode / operand conventions live in this file (Stage 1 notes).
-- [ ] Existing M1–M3 tests remain green.
+- [x] IR library builds and a dump-roundtrip-style unit test passes.
+- [x] Documented opcode / operand conventions live in this file (Stage 1 notes).
+- [x] Existing M1–M3 tests remain green.
 
-**Status:** not started.
+**Stage 1 notes**
+
+- Library: `apollo-ir` in `include/apollo/ir/` + `src/ir/` (`Ir.hpp`, `IrDump.hpp`,
+  `Ir.cpp`, `IrDump.cpp`). Pascal lowerer stays in `src/pascal/ir/` from Stage 2.
+- **IrType:** `I32`, `F64`, `Bool`, `Char`, `StringRef`, `ArrayRef`, `Void`, `Error`.
+- **Values:** monotonic `%N` temporaries per `Function` (`ValueId` / `newTemp()`).
+- **Dump format:** indented lines, e.g. `Module name`, `Function f -> i32`, `Block entry`,
+  `  %0 = const.i32 42 : i32`, `  return %0`. Runtime calls use `call.runtime @writeln`.
+- **Non-terminating ops:** `const.*`, `copy`, `load.local`, `store.local`, arithmetic,
+  unary, comparisons, `call`, `call.runtime`.
+- **Terminators:** `return`, `branch`, `branch.if`.
+
+**Status:** completed.
 
 ### Stage 2 — Straight-line Pascal lowering (M4b)
 
@@ -237,8 +249,16 @@ needs them.
 
 ### Types in IR
 
-Map M3 canonical tags to IR types (`i32`/`f64`/`bool`/`char` / string ref / array ref — exact
-names TBD in Stage 1 notes). Keep a table in this document once Stage 1 lands.
+| `IrType` | M3 / use |
+|----------|----------|
+| `I32` | Integer |
+| `F64` | Real |
+| `Bool` | Boolean |
+| `Char` | Char |
+| `StringRef` | String / string literals |
+| `ArrayRef` | Array (opaque ref for v1) |
+| `Void` | Procedures / terminators |
+| `Error` | Poison / recovery |
 
 ### Console I/O
 
@@ -333,7 +353,7 @@ sooner).
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Shared IR model & dump | not started |
+| Stage 1 — Shared IR model & dump | completed |
 | Stage 2 — Straight-line Pascal lowering | not started |
 | Stage 3 — Control flow & subprograms | not started |
 | Stage 4 — `--ir`, close-out | not started |

@@ -24,9 +24,10 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 
 **Milestone 1 — Source & scanner infrastructure** is complete.
 **Milestone 2 — Parser** is complete.
-**Milestone 3 — Semantic analysis** is complete. The toolchain reports `0.3.0`
-(`PROJECT_VERSION`); cut git tag `v0.3.0` when ready. Next up is
-[Milestone 4 — Intermediate representation](docs/milestones/04-intermediate-representation.md).
+**Milestone 3 — Semantic analysis** is complete (`0.3.0`).
+**Milestone 4 Stage 1** (shared IR model & dump) is complete; Stages 2–4 of
+[Milestone 4 — Intermediate representation](docs/milestones/04-intermediate-representation.md)
+are next. Toolchain version is `0.4.0` (`PROJECT_VERSION`).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -44,6 +45,7 @@ Artifacts:
 
 - **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
+- **`apollo-ir`** — shared language-neutral intermediate representation
 - **`apollo-pascal`** — Pascal scanner, parser, semantic analysis, and dump helpers
 
 ### Listing a source file
