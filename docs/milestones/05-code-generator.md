@@ -186,11 +186,28 @@ tiny hand-built) IR walk. Establish headers, CMake target, and dump/write helper
 
 **Acceptance criteria**
 
-- [ ] Codegen library builds and a writer unit test passes.
-- [ ] Documented `.tbc` formatting conventions live in this file (Stage 1 notes).
-- [ ] Existing M1–M4 tests remain green.
+- [x] Codegen library builds and a writer unit test passes.
+- [x] Documented `.tbc` formatting conventions live in this file (Stage 1 notes).
+- [x] Existing M1–M4 tests remain green.
 
-**Status:** not started.
+**Stage 1 notes**
+
+- Library: `apollo-codegen` in `include/apollo/codegen/` + `src/codegen/` (`TbcWriter.hpp`,
+  `TbcWriter.cpp`), alias `apollo::codegen`. No dependency on `apollo-ir` or
+  `apollo-pascal` yet — Stage 1 is a pure text writer.
+- **Shared vs Pascal:** IR→`.tbc` emission (Stage 2+) lives in shared `apollo-codegen`
+  because IR is language-neutral. `src/pascal/codegen/.gitkeep` remains as a placeholder
+  for any future Pascal-only binding helpers; it is not the home of the emitter.
+- **Formatting:** labels at column 0 as `name:`; instructions indented with four spaces
+  (matching `gemini-system/programs/hello.tbc`). Comments are `# …` lines.
+- **API:** `TbcWriter::comment`, `label`, `op(opcode)` / `op(opcode, operand)`,
+  `pushInt`, `pushStr`; `str()` / `write(ostream)`. Opcode strings only — no opcode enum
+  until Stage 2 maps IR.
+- **`PUSH_STR` escapes:** `escapeTbcString` encodes `\\`, `\"`, `\n`, `\r`, `\t` per
+  Gemini’s `.tbc` parser rules.
+- **Out of scope still:** no `apollo::ir` walk, no `--emit` CLI, no PickVM link.
+
+**Status:** completed.
 
 ### Stage 2 — Straight-line IR emission (M5b)
 
@@ -385,7 +402,7 @@ Carried into codegen awareness (not all must close in M5):
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Codegen skeleton & `.tbc` writer | not started |
+| Stage 1 — Codegen skeleton & `.tbc` writer | completed |
 | Stage 2 — Straight-line IR emission | not started |
 | Stage 3 — Control flow & calling convention | not started |
 | Stage 4 — `--emit`, close-out | not started |
