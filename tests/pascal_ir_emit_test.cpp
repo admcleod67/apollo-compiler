@@ -113,7 +113,7 @@ int main() {
         }
     }
 
-    // count.pas is multi-block — Stage 2 must diagnose.
+    // examples/count.pas (inline): for-loop CFG.
     {
         ScanAnalyseLowerEmit run("count.pas",
                                  "program Count;\n"
@@ -123,8 +123,58 @@ int main() {
                                  "  for i := 1 to 10 do\n"
                                  "    writeln(i);\n"
                                  "end.\n");
-        if (run.diagnostics.errorCount() == 0 || !run.tbc.empty()) {
-            return fail("count.pas multi-block emit should diagnose in Stage 2");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("count.pas should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "main$for.head") || !contains(run.tbc, "LE") ||
+            !contains(run.tbc, "JZ") || !contains(run.tbc, "JUMP") ||
+            !contains(run.tbc, "HALT")) {
+            return fail("count.pas .tbc missing for.head / LE / JZ / JUMP / HALT");
+        }
+    }
+
+    // One-level procedure with param, called from main.
+    {
+        ScanAnalyseLowerEmit run("subprog.pas",
+                                 "program HasProc;\n"
+                                 "procedure Bump(n: integer);\n"
+                                 "var\n"
+                                 "  doubled: integer;\n"
+                                 "begin\n"
+                                 "  doubled := n + n;\n"
+                                 "  writeln(doubled);\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  Bump(5);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("subprogram fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "Bump:") || !contains(run.tbc, "CALL Bump") ||
+            !contains(run.tbc, "STORE_VAR Bump$")) {
+            return fail("subprogram .tbc missing Bump: / CALL Bump / STORE_VAR Bump$");
+        }
+    }
+
+    // Function result: G := 1; i := G;
+    {
+        ScanAnalyseLowerEmit run("funcresult.pas",
+                                 "program HasFunc;\n"
+                                 "var\n"
+                                 "  i: integer;\n"
+                                 "function G: integer;\n"
+                                 "begin\n"
+                                 "  G := 1;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  i := G;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("function-result fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "CALL G") || !contains(run.tbc, "RETURN") ||
+            !contains(run.tbc, "G:")) {
+            return fail("function-result .tbc missing CALL G / RETURN / G:");
         }
     }
 

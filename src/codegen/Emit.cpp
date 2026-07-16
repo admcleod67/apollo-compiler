@@ -28,6 +28,14 @@ std::string mangleTemp(const std::string &functionName, irs::ValueId value) {
     return functionName + "$t" + std::to_string(value.id);
 }
 
+/// Entry block (`entry`) → `functionName`; others → `functionName$irLabel`.
+std::string mangleBlockLabel(const std::string &functionName, const std::string &blockLabel) {
+    if (blockLabel == "entry" || blockLabel.empty()) {
+        return functionName;
+    }
+    return functionName + "$" + blockLabel;
+}
+
 std::string slotName(const irs::Function &function, const irs::Operand &operand) {
     if (operand.kind == irs::OperandKind::Local) {
         if (operand.slot >= function.locals.size()) {
@@ -47,7 +55,7 @@ std::string slotName(const irs::Function &function, const irs::Operand &operand)
 struct EmitCtx {
     const irs::Function &function;
     apollo::common::DiagnosticEngine &diagnostics;
-    TbcWriter writer;
+    TbcWriter &writer;
     /// Value currently on top of the Gemini operand stack, if any.
     std::optional<irs::ValueId> stackTop;
     /// Temps that have been spilled to `STORE_VAR` mangled temp slots.
@@ -60,6 +68,8 @@ struct EmitCtx {
             failed = true;
         }
     }
+
+    [[nodiscard]] bool isMain() const { return function.name == "main"; }
 };
 
 void spillStackTop(EmitCtx &ctx) {
@@ -119,7 +129,6 @@ void emitUnaryNeg(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
         ctx.fail("codegen: neg operand unavailable");
         return;
     }
-    // 0 - x
     emitPushInt(ctx, 0);
     ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, operand));
     ctx.writer.op("SUB");
@@ -132,7 +141,6 @@ void emitUnaryNot(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
         ctx.fail("codegen: not operand unavailable");
         return;
     }
-    // x == 0 → 1 else 0
     ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, operand));
     emitPushInt(ctx, 0);
     ctx.writer.op("EQ");
@@ -140,14 +148,11 @@ void emitUnaryNot(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
 }
 
 void emitAnd(EmitCtx &ctx, irs::ValueId left, irs::ValueId right, irs::ValueId result) {
-    // 0/1 MUL
     emitBinary(ctx, "MUL", left, right, result);
 }
 
 void emitOr(EmitCtx &ctx, irs::ValueId left, irs::ValueId right, irs::ValueId result) {
-    // (left + right) != 0
     emitBinary(ctx, "ADD", left, right, result);
-    // result currently on stack; compare to 0
     spillStackTop(ctx);
     ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, result));
     emitPushInt(ctx, 0);
@@ -191,8 +196,7 @@ void emitStoreLocal(EmitCtx &ctx, const irs::Instr &instr) {
     const irs::ValueId value = operandValue(instr.b);
     ensureOnTop(ctx, value);
     ctx.writer.op("STORE_VAR", slotName(ctx.function, instr.a));
-    ctx.stackTop.reset(); // STORE_VAR pops
-    // Void result is unused; do not leave it on stack.
+    ctx.stackTop.reset();
 }
 
 void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
@@ -200,7 +204,6 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
     if (name == "write" || name == "writeln") {
         for (const irs::ValueId arg : instr.args) {
             ensureOnTop(ctx, arg);
-            // Prefer PRINT_VAL for mixed types (Gemini BASIC style).
             ctx.writer.op("PRINT_VAL");
             ctx.stackTop.reset();
         }
@@ -210,7 +213,6 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
         return;
     }
     if (name == "read" || name == "readln") {
-        // M4 emits one CallRuntime per variable (no args); result type selects input op.
         spillStackTop(ctx);
         if (instr.type == irs::IrType::I32 || instr.type == irs::IrType::Bool) {
             ctx.writer.op("INPUT_INT");
@@ -224,6 +226,24 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
         return;
     }
     ctx.fail("codegen: unknown runtime call '" + name + "'");
+}
+
+/// Push args left-to-right, CALL callee; spill non-void result.
+void emitUserCall(EmitCtx &ctx, const irs::Instr &instr) {
+    spillStackTop(ctx);
+    for (const irs::ValueId arg : instr.args) {
+        if (ctx.spilled.count(arg.id) == 0) {
+            ctx.fail("codegen: call argument %" + std::to_string(arg.id) + " unavailable");
+            return;
+        }
+        ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, arg));
+    }
+    ctx.writer.op("CALL", instr.text);
+    ctx.stackTop.reset();
+    if (instr.type != irs::IrType::Void) {
+        ctx.stackTop = instr.result;
+        spillStackTop(ctx);
+    }
 }
 
 const char *cmpOpcode(irs::Op op) {
@@ -256,15 +276,6 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
     case irs::Op::ConstChar:
     case irs::Op::ConstString:
         emitConst(ctx, instr);
-        // Spilling is deferred until the value must leave the stack; but if the next
-        // instruction does not consume this value immediately as stack top, setResult
-        // path handles it. For consts we leave on stack. When a *new* value is produced
-        // later, spillStackTop saves this const.
-        // Problem: binary emit requires operands in `spilled`. So before any binary/unary
-        // that isn't "stackTop is the only operand", we need spills.
-        // Fix: after every value-producing instr, eagerly spill so operands are always
-        // reloadable. That matches "spill incumbent before producing new value" and
-        // also makes emitBinary simple.
         spillStackTop(ctx);
         break;
     case irs::Op::LoadLocal:
@@ -322,56 +333,111 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
             spillStackTop(ctx);
         }
         break;
+    case irs::Op::Call:
+        emitUserCall(ctx, instr);
+        break;
     case irs::Op::ConstF64:
-        ctx.fail("codegen: ConstF64 not supported in Milestone 5 Stage 2");
+        ctx.fail("codegen: ConstF64 not supported in Milestone 5 Stage 3");
         break;
     case irs::Op::Mod:
-        ctx.fail("codegen: Mod not supported in Milestone 5 Stage 2");
+        ctx.fail("codegen: Mod not supported in Milestone 5 Stage 3");
         break;
     case irs::Op::Copy:
-        ctx.fail("codegen: Copy not supported in Milestone 5 Stage 2");
-        break;
-    case irs::Op::Call:
-        ctx.fail("codegen: user Call not supported until Milestone 5 Stage 3");
+        ctx.fail("codegen: Copy not supported in Milestone 5 Stage 3");
         break;
     }
 }
 
-bool validateStraightLineMain(const irs::Module &module,
-                              apollo::common::DiagnosticEngine &diagnostics) {
+void emitParamPrologue(EmitCtx &ctx) {
+    // Caller pushed args left-to-right; top of stack is the last param.
+    for (auto it = ctx.function.params.rbegin(); it != ctx.function.params.rend(); ++it) {
+        ctx.writer.op("STORE_VAR", mangleSlot(ctx.function.name, it->name));
+    }
+}
+
+void emitTerminator(EmitCtx &ctx, const irs::Terminator &term) {
+    if (ctx.failed) {
+        return;
+    }
+
+    switch (term.kind) {
+    case irs::TerminatorKind::Branch:
+        spillStackTop(ctx);
+        ctx.writer.op("JUMP", mangleBlockLabel(ctx.function.name, term.target));
+        break;
+    case irs::TerminatorKind::BranchIf: {
+        if (!term.value) {
+            ctx.fail("codegen: BranchIf missing condition value");
+            return;
+        }
+        ensureOnTop(ctx, *term.value);
+        // Gemini JZ jumps when top is zero → false target; else fall through then JUMP true.
+        ctx.writer.op("JZ", mangleBlockLabel(ctx.function.name, term.falseTarget));
+        ctx.stackTop.reset(); // JZ pops
+        ctx.writer.op("JUMP", mangleBlockLabel(ctx.function.name, term.target));
+        break;
+    }
+    case irs::TerminatorKind::Return:
+        if (ctx.isMain()) {
+            spillStackTop(ctx);
+            ctx.writer.op("HALT");
+        } else {
+            if (term.value) {
+                ensureOnTop(ctx, *term.value);
+                // Leave return value on stack for the caller; do not spill.
+                ctx.stackTop.reset();
+            } else {
+                spillStackTop(ctx);
+            }
+            ctx.writer.op("RETURN");
+        }
+        break;
+    }
+}
+
+void emitBasicBlock(EmitCtx &ctx, const irs::BasicBlock &block, bool isEntry) {
+    ctx.stackTop.reset();
+    ctx.writer.label(mangleBlockLabel(ctx.function.name, block.label));
+
+    if (isEntry && !ctx.isMain() && !ctx.function.params.empty()) {
+        emitParamPrologue(ctx);
+    }
+
+    for (const irs::Instr &instr : block.body) {
+        emitInstr(ctx, instr);
+        if (ctx.failed) {
+            return;
+        }
+    }
+    emitTerminator(ctx, block.term);
+}
+
+bool emitFunction(TbcWriter &writer, const irs::Function &function,
+                  apollo::common::DiagnosticEngine &diagnostics) {
+    if (function.blocks.empty()) {
+        reportError(diagnostics, "codegen: function '" + function.name + "' has no blocks");
+        return false;
+    }
+
+    EmitCtx ctx{function, diagnostics, writer, std::nullopt, {}, false};
+    for (std::size_t i = 0; i < function.blocks.size(); ++i) {
+        emitBasicBlock(ctx, function.blocks[i], /*isEntry=*/i == 0);
+        if (ctx.failed) {
+            return false;
+        }
+    }
+    return !ctx.failed;
+}
+
+bool validateModule(const irs::Module &module, apollo::common::DiagnosticEngine &diagnostics) {
     if (module.functions.empty()) {
         reportError(diagnostics, "codegen: module has no functions");
         return false;
     }
-    if (module.functions.size() != 1) {
-        reportError(diagnostics,
-                    "codegen: only a single main function is supported in Stage 2 "
-                    "(found " +
-                        std::to_string(module.functions.size()) + ")");
+    if (module.functions[0].name != "main") {
+        reportError(diagnostics, "codegen: expected functions[0] to be 'main', found '" +
+                                     module.functions[0].name + "'");
         return false;
-    }
-    const irs::Function &fn = module.functions[0];
-    if (fn.name != "main") {
-        reportError(diagnostics, "codegen: expected function 'main', found '" + fn.name + "'");
-        return false;
-    }
-    if (fn.blocks.size() != 1) {
-        reportError(diagnostics,
-                    "codegen: multi-block CFGs not supported until Milestone 5 Stage 3");
-        return false;
-    }
-    const irs::BasicBlock &block = fn.blocks[0];
-    if (block.term.kind != irs::TerminatorKind::Return) {
-        reportError(diagnostics,
-                    "codegen: branches not supported until Milestone 5 Stage 3");
-        return false;
-    }
-    for (const irs::Instr &instr : block.body) {
-        if (instr.op == irs::Op::Call) {
-            reportError(diagnostics,
-                        "codegen: user Call not supported until Milestone 5 Stage 3");
-            return false;
-        }
     }
     return true;
 }
@@ -379,28 +445,21 @@ bool validateStraightLineMain(const irs::Module &module,
 } // namespace
 
 std::string emitTbc(const irs::Module &module, apollo::common::DiagnosticEngine &diagnostics) {
-    if (!validateStraightLineMain(module, diagnostics)) {
+    if (!validateModule(module, diagnostics)) {
         return {};
     }
 
-    const irs::Function &fn = module.functions[0];
-    EmitCtx ctx{fn, diagnostics, {}, std::nullopt, {}, false};
-
-    ctx.writer.label("main");
-    for (const irs::Instr &instr : fn.blocks[0].body) {
-        emitInstr(ctx, instr);
-        if (ctx.failed) {
+    TbcWriter writer;
+    for (const irs::Function &fn : module.functions) {
+        if (!emitFunction(writer, fn, diagnostics)) {
             return {};
         }
     }
-    // main Return → HALT (discard optional return value).
-    spillStackTop(ctx);
-    ctx.writer.op("HALT");
 
-    if (ctx.failed || diagnostics.errorCount() != 0) {
+    if (diagnostics.errorCount() != 0) {
         return {};
     }
-    return ctx.writer.str();
+    return writer.str();
 }
 
 void writeTbc(std::ostream &out, const irs::Module &module,

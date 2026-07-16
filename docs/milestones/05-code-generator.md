@@ -287,11 +287,29 @@ produces runnable bytecode.
 
 **Acceptance criteria**
 
-- [ ] `examples/count.pas` emits `.tbc` with zero diagnostics and visible loop jumps.
-- [ ] A top-level subprogram fixture emits a callable region and a `CALL` from `main`.
-- [ ] Existing tests remain green.
+- [x] `examples/count.pas` emits `.tbc` with zero diagnostics and visible loop jumps.
+- [x] A top-level subprogram fixture emits a callable region and a `CALL` from `main`.
+- [x] Existing tests remain green.
 
-**Status:** not started.
+**Stage 3 notes**
+
+- **Module walk:** `emitTbc` emits every `module.functions` entry in order (`main` first per
+  M4). Gate is only “non-empty module with `functions[0].name == main`”.
+- **Block labels:** entry block (`entry`) → `.tbc` label `<function>:`; other IR labels →
+  `<function>$<irLabel>` (e.g. `main$for.head.0`). Branch targets use the same mangling.
+- **Block boundaries:** `stackTop` is cleared at each block start; spilled temps and
+  locals/params survive across blocks via `STORE_VAR` / `LOAD_VAR`.
+- **Terminators:** `Branch` → `JUMP`; `BranchIf` → `JZ <false>` then `JUMP <true>` (Gemini
+  `JZ` jumps on zero; M4 conditions are 0/1); `main` `Return` → `HALT`; subprogram
+  `Return` → leave optional return value on stack, then `RETURN`.
+- **Calling convention:** caller pushes args left-to-right (`LOAD_VAR` each spilled temp)
+  then `CALL <name>`. Callee entry prologue stores params in **reverse** order into
+  `<fn>$<paramName>`. Function results stay on the stack through `RETURN`; the caller’s
+  `Op::Call` result temp is spilled like any other value. `var` params remain ordinary
+  value slots (no write-back).
+- **Still diagnosed:** `ConstF64`, `Mod`, `Copy`.
+
+**Status:** completed.
 
 ### Stage 4 — Driver, polish & Milestone 5 finish (M5d)
 
@@ -427,7 +445,7 @@ Carried into codegen awareness (not all must close in M5):
 |-------|--------|
 | Stage 1 — Codegen skeleton & `.tbc` writer | completed |
 | Stage 2 — Straight-line IR emission | completed |
-| Stage 3 — Control flow & calling convention | not started |
+| Stage 3 — Control flow & calling convention | completed |
 | Stage 4 — `--emit`, close-out | not started |
 
 ---
