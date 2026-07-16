@@ -301,12 +301,30 @@ close Milestone 4.
 
 **Acceptance criteria**
 
-- [ ] `--ir` on `examples/hello.pas` and `examples/count.pas` exits 0 and prints IR.
-- [ ] `--ir` on a semantic-error fixture exits non-zero (no IR dump required).
-- [ ] README documents `--list`, `--tokens`, `--ast`, `--check`, and `--ir`.
-- [ ] All Stage 1–4 tests pass under `ctest`.
+- [x] `--ir` on `examples/hello.pas` and `examples/count.pas` exits 0 and prints IR.
+- [x] `--ir` on a semantic-error fixture exits non-zero (no IR dump required).
+- [x] README documents `--list`, `--tokens`, `--ast`, `--check`, and `--ir`.
+- [x] All Stage 1–4 tests pass under `ctest`.
 
-**Status:** not started.
+**Stage 4 notes**
+
+- **CLI:** `apolloc --ir` / `-i` runs load → scan → parse → analyse → `lowerToIr` →
+  `writeIrDump` to stdout. Diagnostics go to stderr. The IR dump is written **only** when
+  `errorCount() == 0` after analyse+lower (parse failure skips lowering entirely), so
+  semantic-error fixtures exit non-zero with an empty stdout for IR.
+- **Recursive array assignability:** `isAssignable` in `Analyse.cpp` now peels aliases via
+  a local `peelAliases(TypePtr)` helper (preserving `Type::element`, unlike
+  `canonicalTag`) and, when both sides are `Array`, recurses on element types. Same-tag
+  and Integer→Real rules are unchanged. Static index-bound equality remains deferred.
+  Analyse tests cover compatible (`array of integer` := `array of integer`) and
+  incompatible (`array of integer` := `array of real`) assignments.
+- **Arrays in IR:** assignability is correct for whole-array assignment, but arrays still
+  lower only as opaque `ArrayRef` slots — no index load/store or bounds checks yet
+  (Milestone 5+ if fixtures demand it).
+- **Version:** toolchain already reports `0.4.0` (`PROJECT_VERSION`). Cutting git tag
+  `v0.4.0` is a separate release follow-up, not part of this stage's code change.
+
+**Status:** completed.
 
 ### Suggested staging cadence
 
@@ -360,26 +378,14 @@ revisiting Pascal AST.
 
 ## Open debts / prerequisites (from M3)
 
-**Recursive array assignability**
+**Recursive array assignability** — **resolved in Stage 4.**
 
-Today `isAssignable` in `src/pascal/semantic/Analyse.cpp` peels aliases via
-`canonicalTag` and then compares tags only. Two values with `TypeTag::Array` therefore
-count as assignable even when their element types differ (e.g. `array of integer` vs
-`array of real`).
+`isAssignable` previously treated any two `TypeTag::Array` values as assignable. It now
+peels aliases and recurses on `Type::element`. Static index-bound equality can wait until
+bounds matter for IR layout / sizing. Array *lowering* remains opaque (`ArrayRef` only).
 
-Before or while lowering array-typed values in Milestone 4, tighten assignability:
-
-1. Peel aliases as today.
-2. If both sides have tag `Array`, require the **element** types to be assignable (or
-   identical) via recursion on `Type::element`.
-3. Static index-bound equality can wait until bounds matter for IR layout / sizing.
-
-Touch points: `isAssignable`, `TypeTag::Array`, `Type::element` in
-`include/apollo/pascal/Type.hpp`. See also the cross-link under Milestone 3
+See Stage 4 notes above and the cross-link under Milestone 3
 [Migration / follow-on notes](03-semantic-analysis.md#migration--follow-on-notes).
-
-**Default schedule:** implement in **Stage 4** (or Stage 3 if an IR fixture needs arrays
-sooner).
 
 ---
 
@@ -446,19 +452,21 @@ sooner).
 | Stage 1 — Shared IR model & dump | completed |
 | Stage 2 — Straight-line Pascal lowering | completed |
 | Stage 3 — Control flow & subprograms | completed |
-| Stage 4 — `--ir`, close-out | not started |
+| Stage 4 — `--ir`, close-out | completed |
 
 ---
 
 ## Definition of done (Milestone 4)
 
-- [ ] Stages 1–4 acceptance criteria checked off.
-- [ ] `ctest` green on a clean configure/build.
-- [ ] README documents `apolloc --ir`.
-- [ ] `examples/hello.pas` and `examples/count.pas` pass `--ir`.
-- [ ] This status table marked completed.
-- [ ] Version policy recorded (default: report `0.4.0`; cut git tag `v0.4.0` as follow-up).
-- [ ] Recursive array assignability fixed or explicitly waived with rationale in Stage 4 notes.
+- [x] Stages 1–4 acceptance criteria checked off.
+- [x] `ctest` green on a clean configure/build.
+- [x] README documents `apolloc --ir`.
+- [x] `examples/hello.pas` and `examples/count.pas` pass `--ir`.
+- [x] This status table marked completed.
+- [x] Version policy recorded (reports `0.4.0`; cut git tag `v0.4.0` as a separate
+  release follow-up).
+- [x] Recursive array assignability fixed (Stage 4 notes); array IR lowering remains
+  opaque `ArrayRef`.
 
 ---
 

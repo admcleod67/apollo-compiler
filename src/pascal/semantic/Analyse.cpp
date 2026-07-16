@@ -49,16 +49,32 @@ bool isError(const TypePtr &type) {
     return !type || canonicalTag(type) == TypeTag::Error;
 }
 
+/// Walk Alias → canonical until a non-alias (or null) type is reached.
+/// Needed by `isAssignable` so Array element pointers survive peeling (unlike
+/// `canonicalTag`, which only returns the tag).
+TypePtr peelAliases(TypePtr type) {
+    while (type && type->tag == TypeTag::Alias) {
+        type = type->canonical;
+    }
+    return type;
+}
+
 bool isAssignable(const TypePtr &dest, const TypePtr &src) {
     if (isError(dest) || isError(src)) {
         return true;
     }
-    const TypeTag d = canonicalTag(dest);
-    const TypeTag s = canonicalTag(src);
-    if (d == s) {
+    const TypePtr d = peelAliases(dest);
+    const TypePtr s = peelAliases(src);
+    if (!d || !s) {
         return true;
     }
-    return d == TypeTag::Real && s == TypeTag::Integer;
+    if (d->tag == TypeTag::Array && s->tag == TypeTag::Array) {
+        return isAssignable(d->element, s->element);
+    }
+    if (d->tag == s->tag) {
+        return true;
+    }
+    return d->tag == TypeTag::Real && s->tag == TypeTag::Integer;
 }
 
 bool isPrintable(TypeTag tag) {

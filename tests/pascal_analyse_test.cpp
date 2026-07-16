@@ -244,5 +244,35 @@ int main() {
         }
     }
 
+    // Compatible array assignment (same element type)
+    {
+        ScanAnalyse run("arrayok.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  a: array [1..10] of integer;\n"
+                        "  b: array [1..10] of integer;\n"
+                        "begin\n"
+                        "  a := b;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("array of integer := array of integer should be clean");
+        }
+    }
+
+    // Incompatible array assignment (different element types)
+    {
+        ScanAnalyse run("arraybad.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  a: array [1..10] of integer;\n"
+                        "  b: array [1..10] of real;\n"
+                        "begin\n"
+                        "  a := b;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("array of integer := array of real should diagnose");
+        }
+    }
+
     return 0;
 }

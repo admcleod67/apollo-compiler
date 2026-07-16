@@ -171,3 +171,21 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/tests/fixtures/check_error.pas
 )
 set_tests_properties(apolloc_check_error PROPERTIES WILL_FAIL TRUE)
+
+add_test(
+    NAME apolloc_ir_hello
+    COMMAND $<TARGET_FILE:apolloc> --ir ${CMAKE_SOURCE_DIR}/examples/hello.pas
+)
+set_tests_properties(apolloc_ir_hello PROPERTIES PASS_REGULAR_EXPRESSION "Function main")
+
+add_test(
+    NAME apolloc_ir_count
+    COMMAND $<TARGET_FILE:apolloc> --ir ${CMAKE_SOURCE_DIR}/examples/count.pas
+)
+set_tests_properties(apolloc_ir_count PROPERTIES PASS_REGULAR_EXPRESSION "for\\.head")
+
+add_test(
+    NAME apolloc_ir_error
+    COMMAND $<TARGET_FILE:apolloc> --ir ${CMAKE_SOURCE_DIR}/tests/fixtures/check_error.pas
+)
+set_tests_properties(apolloc_ir_error PROPERTIES WILL_FAIL TRUE)

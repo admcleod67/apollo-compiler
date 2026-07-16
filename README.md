@@ -25,9 +25,9 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 1 — Source & scanner infrastructure** is complete.
 **Milestone 2 — Parser** is complete.
 **Milestone 3 — Semantic analysis** is complete (`0.3.0`).
-**Milestone 4 Stages 1–3** (shared IR model, straight-line Pascal lowering, and control
-flow / subprogram lowering) are complete; Stage 4 of
-[Milestone 4 — Intermediate representation](docs/milestones/04-intermediate-representation.md)
+**Milestone 4 — Intermediate representation** is complete (`0.4.0`): shared IR model,
+Pascal lowering (straight-line, control flow, and top-level subprograms), and
+`apolloc --ir`. [Milestone 5 — Code generator](docs/milestones/05-code-generator.md)
 is next. Toolchain version is `0.4.0` (`PROJECT_VERSION`).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
@@ -44,10 +44,10 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--version`, `--help`)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
 - **`apollo-ir`** — shared language-neutral intermediate representation
-- **`apollo-pascal`** — Pascal scanner, parser, semantic analysis, and dump helpers
+- **`apollo-pascal`** — Pascal scanner, parser, semantic analysis, IR lowering, and dump helpers
 
 ### Listing a source file
 
@@ -91,6 +91,17 @@ Diagnostics go to stderr; the process exits non-zero if any errors were reported
 Scans, parses, and semantically analyses Pascal source (no AST dump). Diagnostics go
 to stderr; exit 0 means the program is free of lexical, syntactic, and semantic errors
 reported by the analyser.
+
+### Dumping IR
+
+```bash
+./build/src/tools/apolloc --ir examples/hello.pas
+./build/src/tools/apolloc --ir examples/count.pas
+```
+
+Scans, parses, analyses, and lowers Pascal source to the shared Apollo IR, then prints
+a human-readable IR dump to stdout. Diagnostics go to stderr; the process exits
+non-zero if any errors were reported, and skips the IR dump when errors are present.
 
 ## Layout
 

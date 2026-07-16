@@ -2,11 +2,13 @@
 #include "apollo/common/Listing.hpp"
 #include "apollo/common/SourceFile.hpp"
 #include "apollo/common/Version.hpp"
+#include "apollo/ir/IrDump.hpp"
 #include "apollo/pascal/Analyse.hpp"
 #include "apollo/pascal/AstDump.hpp"
 #include "apollo/pascal/Parser.hpp"
 #include "apollo/pascal/Scanner.hpp"
 #include "apollo/pascal/TokenDump.hpp"
+#include "apollo/pascal/ir/Lower.hpp"
 
 #include <iostream>
 #include <string_view>
@@ -15,7 +17,7 @@ namespace {
 
 void printUsage(std::ostream &out) {
     out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>] "
-           "[--ast <file>] [--check <file>]\n"
+           "[--ast <file>] [--check <file>] [--ir <file>]\n"
         << "\n"
         << "Apollo Compiler — multi-language toolchain for the Gemini VM.\n"
         << "\n"
@@ -25,7 +27,8 @@ void printUsage(std::ostream &out) {
         << "  -l, --list FILE    Print a numbered source listing\n"
         << "  -t, --tokens FILE  Scan Pascal source and dump the token stream\n"
         << "  -a, --ast FILE     Parse Pascal source and dump the AST\n"
-        << "  -c, --check FILE   Scan, parse, and semantically analyse Pascal source\n";
+        << "  -c, --check FILE   Scan, parse, and semantically analyse Pascal source\n"
+        << "  -i, --ir FILE      Analyse and lower Pascal source to an IR dump\n";
 }
 
 int listFile(std::string_view path) {
@@ -87,6 +90,30 @@ int checkFile(std::string_view path) {
     return diagnostics.errorCount() == 0 ? 0 : 1;
 }
 
+int irFile(std::string_view path) {
+    const auto loaded = apollo::common::loadSourceFile(path);
+    if (!loaded.file) {
+        std::cerr << "apolloc: " << loaded.error << '\n';
+        return 1;
+    }
+
+    apollo::common::DiagnosticEngine diagnostics(*loaded.file);
+    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    if (program) {
+        const auto symbols = apollo::pascal::analyse(*program, diagnostics);
+        if (diagnostics.errorCount() == 0) {
+            const apollo::ir::Module module =
+                apollo::pascal::ir::lowerToIr(*program, symbols, diagnostics);
+            if (diagnostics.errorCount() == 0) {
+                apollo::ir::writeIrDump(std::cout, module);
+            }
+        }
+    }
+    diagnostics.write(std::cerr);
+    return diagnostics.errorCount() == 0 ? 0 : 1;
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -135,6 +162,14 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         return checkFile(argv[2]);
+    }
+    if (arg == "--ir" || arg == "-i") {
+        if (argc < 3) {
+            std::cerr << "apolloc: --ir requires a file path\n";
+            printUsage(std::cerr);
+            return 1;
+        }
+        return irFile(argv[2]);
     }
 
     std::cerr << "apolloc: unknown option: " << arg << '\n';
