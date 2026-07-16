@@ -330,13 +330,29 @@ produces runnable bytecode.
 
 **Acceptance criteria**
 
-- [ ] `--emit` / `--tbc` on `examples/hello.pas` and `examples/count.pas` exits 0 and
+- [x] `--emit` / `--tbc` on `examples/hello.pas` and `examples/count.pas` exits 0 and
   prints `.tbc`.
-- [ ] `--emit` on a semantic-error fixture exits non-zero (no bytecode dump required).
-- [ ] README documents `--list`, `--tokens`, `--ast`, `--check`, `--ir`, and `--emit`.
-- [ ] All Stage 1–4 tests pass under `ctest`.
+- [x] `--emit` on a semantic-error fixture exits non-zero (no bytecode dump required).
+- [x] README documents `--list`, `--tokens`, `--ast`, `--check`, `--ir`, and `--emit`.
+- [x] All Stage 1–4 tests pass under `ctest`.
 
-**Status:** not started.
+**Stage 4 notes**
+
+- **CLI:** `apolloc --emit` / `-e` and alias `--tbc` run load → scan → parse → analyse →
+  `lowerToIr` → `emitTbc` → stdout. Diagnostics go to stderr. The `.tbc` dump is written
+  **only** when `errorCount() == 0` after analyse+lower+emit (parse failure skips
+  lowering entirely), so semantic-error fixtures exit non-zero with an empty stdout for
+  bytecode.
+- **CMake:** `apolloc` PRIVATE-links `apollo::codegen` (not transitive via `apollo-pascal`).
+- **CLI tests:** `apolloc_emit_hello`, `apolloc_emit_count`, `apolloc_emit_error`
+  (`WILL_FAIL`), and `apolloc_tbc_hello` (alias coverage).
+- **Version:** toolchain already reports `0.5.0` (`PROJECT_VERSION`). Cutting git tag
+  `v0.5.0` is a separate release follow-up, not part of this stage's code change.
+- **Console binding (v1, documented):** `write` / `writeln` → `PRINT_VAL` (+ `PRINT_EOL`);
+  `read` / `readln` → `INPUT_INT` / `INPUT_STR`. Steady-state switch to `CALL_FUNC` remains
+  a Gemini follow-on; see **Console I/O binding** above.
+
+**Status:** completed.
 
 ### Suggested staging cadence
 
@@ -446,19 +462,20 @@ Carried into codegen awareness (not all must close in M5):
 | Stage 1 — Codegen skeleton & `.tbc` writer | completed |
 | Stage 2 — Straight-line IR emission | completed |
 | Stage 3 — Control flow & calling convention | completed |
-| Stage 4 — `--emit`, close-out | not started |
+| Stage 4 — `--emit`, close-out | completed |
 
 ---
 
 ## Definition of done (Milestone 5)
 
-- [ ] Stages 1–4 acceptance criteria checked off.
-- [ ] `ctest` green on a clean configure/build.
-- [ ] README documents `apolloc --emit` (or `--tbc`).
-- [ ] `examples/hello.pas` and `examples/count.pas` pass `--emit`.
-- [ ] This status table marked completed.
-- [ ] Version policy recorded (default: report `0.5.0`; cut git tag `v0.5.0` as follow-up).
-- [ ] Console binding table documented (v1 opcodes and/or `CALL_FUNC` IDs).
+- [x] Stages 1–4 acceptance criteria checked off.
+- [x] `ctest` green on a clean configure/build.
+- [x] README documents `apolloc --emit` (or `--tbc`).
+- [x] `examples/hello.pas` and `examples/count.pas` pass `--emit`.
+- [x] This status table marked completed.
+- [x] Version policy recorded (reports `0.5.0`; cut git tag `v0.5.0` as a separate
+  release follow-up).
+- [x] Console binding table documented (v1 opcodes; `CALL_FUNC` IDs deferred to Gemini).
 
 ---
 

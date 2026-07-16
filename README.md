@@ -26,10 +26,8 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 2 — Parser** is complete.
 **Milestone 3 — Semantic analysis** is complete (`0.3.0`).
 **Milestone 4 — Intermediate representation** is complete (`0.4.0`).
-**Milestone 5 Stages 1–3** (shared `.tbc` writer, straight-line emission, and CFG /
-calling-convention emission) are complete; Stage 4 of
-[Milestone 5 — Code generator](docs/milestones/05-code-generator.md)
-is next. Toolchain version is `0.5.0` (`PROJECT_VERSION`).
+**Milestone 5 — Code generator** is complete (`0.5.0`).
+Toolchain version is `0.5.0` (`PROJECT_VERSION`).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -45,7 +43,7 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--version`, `--help`)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--emit` / `--tbc`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
 - **`apollo-ir`** — shared language-neutral intermediate representation
 - **`apollo-codegen`** — Gemini `.tbc` text bytecode writer and IR emitter
@@ -104,6 +102,17 @@ reported by the analyser.
 Scans, parses, analyses, and lowers Pascal source to the shared Apollo IR, then prints
 a human-readable IR dump to stdout. Diagnostics go to stderr; the process exits
 non-zero if any errors were reported, and skips the IR dump when errors are present.
+
+### Emitting bytecode
+
+```bash
+./build/src/tools/apolloc --emit examples/hello.pas
+./build/src/tools/apolloc --tbc examples/count.pas
+```
+
+Scans, parses, analyses, lowers, and emits Gemini `.tbc` text bytecode to stdout.
+`--tbc` is an alias for `--emit`. Diagnostics go to stderr; the process exits
+non-zero if any errors were reported, and skips the `.tbc` dump when errors are present.
 
 ## Layout
 
