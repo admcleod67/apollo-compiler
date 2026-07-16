@@ -123,17 +123,158 @@ int main() {
         }
     }
 
-    // Unsupported construct (if) should diagnose rather than crash.
+    // if/else lowers to a multi-block CFG with a branch.if.
     {
-        ScanAnalyseLower run("ifstmt.pas",
+        ScanAnalyseLower run("ifelse.pas",
                              "program HasIf;\n"
                              "var\n"
                              "  x: integer;\n"
                              "begin\n"
-                             "  if x > 0 then x := 1;\n"
+                             "  if x > 0 then x := 1 else x := 2;\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("if/else fixture should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Block if.then.") || !contains(run.dump, "Block if.else.") ||
+            !contains(run.dump, "Block if.end.")) {
+            return fail("if/else dump missing then/else/end blocks");
+        }
+        if (!contains(run.dump, "branch.if")) {
+            return fail("if/else dump missing branch.if");
+        }
+    }
+
+    // while lowers to head/body/end blocks that loop back to head.
+    {
+        ScanAnalyseLower run("whileloop.pas",
+                             "program HasWhile;\n"
+                             "var\n"
+                             "  x: integer;\n"
+                             "begin\n"
+                             "  while x < 10 do x := x + 1;\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("while fixture should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Block while.head.") || !contains(run.dump, "Block while.body.") ||
+            !contains(run.dump, "Block while.end.")) {
+            return fail("while dump missing head/body/end blocks");
+        }
+        if (!contains(run.dump, "branch while.head.")) {
+            return fail("while dump missing loop-back branch to head");
+        }
+    }
+
+    // repeat...until loops while the condition is false.
+    {
+        ScanAnalyseLower run("repeatloop.pas",
+                             "program HasRepeat;\n"
+                             "var\n"
+                             "  x: integer;\n"
+                             "begin\n"
+                             "  repeat x := x + 1 until x >= 10;\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("repeat fixture should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Block repeat.body.") || !contains(run.dump, "Block repeat.end.")) {
+            return fail("repeat dump missing body/end blocks");
+        }
+        if (!contains(run.dump, "branch.if")) {
+            return fail("repeat dump missing branch.if for the until condition");
+        }
+    }
+
+    // examples/count.pas (inline): for + writeln, the Stage 3 golden control-flow fixture.
+    {
+        ScanAnalyseLower run("count.pas",
+                             "program Count;\n"
+                             "var\n"
+                             "  i: integer;\n"
+                             "begin\n"
+                             "  for i := 1 to 10 do\n"
+                             "    writeln(i);\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("count.pas should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Block for.head.") || !contains(run.dump, "Block for.body.") ||
+            !contains(run.dump, "Block for.end.")) {
+            return fail("count.pas dump missing for.head/body/end blocks");
+        }
+        if (!contains(run.dump, "cmp.le") || !contains(run.dump, "call.runtime @writeln")) {
+            return fail("count.pas dump missing cmp.le / call.runtime @writeln");
+        }
+    }
+
+    // One-level subprogram: procedure with a param + local var, called from main.
+    {
+        ScanAnalyseLower run("subprog.pas",
+                             "program HasProc;\n"
+                             "procedure Bump(n: integer);\n"
+                             "var\n"
+                             "  doubled: integer;\n"
+                             "begin\n"
+                             "  doubled := n + n;\n"
+                             "  writeln(doubled);\n"
+                             "end;\n"
+                             "begin\n"
+                             "  Bump(5);\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("subprogram fixture should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Function Bump")) {
+            return fail("dump missing lowered subprogram Function Bump");
+        }
+        if (!contains(run.dump, "param[0]")) {
+            return fail("dump missing param[0] reference inside Bump");
+        }
+    }
+
+    // Function result: assigning to the function's own name sets the return value.
+    {
+        ScanAnalyseLower run("funcresult.pas",
+                             "program HasFunc;\n"
+                             "var\n"
+                             "  i: integer;\n"
+                             "function G: integer;\n"
+                             "begin\n"
+                             "  G := 1;\n"
+                             "end;\n"
+                             "begin\n"
+                             "  i := G;\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("function-result fixture should lower with zero diagnostics");
+        }
+        if (!contains(run.dump, "Function G -> i32")) {
+            return fail("dump missing Function G -> i32");
+        }
+        const std::size_t funcPos = run.dump.find("Function G -> i32");
+        const std::size_t constOnePos = run.dump.find("const.i32 1", funcPos);
+        const std::size_t returnPos = run.dump.find("return", funcPos);
+        if (constOnePos == std::string::npos || returnPos == std::string::npos ||
+            returnPos < constOnePos) {
+            return fail("G's return should follow its assigned const.i32 1 result");
+        }
+    }
+
+    // Accessing an enclosing-scope (outer) variable from within a subprogram is diagnosed.
+    {
+        ScanAnalyseLower run("outerscope.pas",
+                             "program HasOuterAccess;\n"
+                             "var\n"
+                             "  total: integer;\n"
+                             "procedure Bad;\n"
+                             "begin\n"
+                             "  total := total + 1;\n"
+                             "end;\n"
+                             "begin\n"
+                             "  Bad;\n"
                              "end.\n");
         if (run.diagnostics.errorCount() == 0) {
-            return fail("if statement should diagnose as not lowered until Stage 3");
+            return fail("accessing an outer-scope var from a subprogram should diagnose");
         }
     }
 

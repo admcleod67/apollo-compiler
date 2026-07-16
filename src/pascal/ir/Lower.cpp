@@ -3,6 +3,7 @@
 #include "apollo/common/Diagnostic.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -90,15 +91,49 @@ irs::IrType toIrType(const TypePtr &type) {
     return irs::IrType::Error;
 }
 
+/// Re-resolve a param/local `TypeDenoter` fresh at lowering time.
+///
+/// `SymbolTable` pops each subprogram's scope once `analyse()` returns, so a subprogram's
+/// own params/locals are no longer queryable there. Predefined types (`integer`, ...) and
+/// program-level `type` aliases still live in the retained top-level scope, so re-resolving
+/// the denoter via `symbols.lookup()` works for the common case. Falls back to `Error`
+/// (silently — `--check` already validated the source) for anything not found, e.g. a
+/// subprogram-local `type` declaration, which is not resolvable post-analyse either.
+TypePtr resolveTypeDenoter(const SymbolTable &symbols, const ast::TypeDenoter &denoter) {
+    if (denoter.kind == ast::TypeKind::Array) {
+        if (!denoter.element) {
+            return makeError();
+        }
+        return makeArray(resolveTypeDenoter(symbols, *denoter.element));
+    }
+    if (denoter.name.empty()) {
+        return makeError();
+    }
+    const Symbol *found = symbols.lookup(denoter.name);
+    if (!found || found->kind != SymbolKind::Type || !found->type) {
+        return makeError();
+    }
+    return found->type;
+}
+
 struct LowerCtx {
     const SymbolTable &symbols;
     apollo::common::DiagnosticEngine &diagnostics;
     irs::Function &function;
-    irs::BasicBlock &block;
-    /// Folded var/param name -> `Function::locals` index.
+    /// Currently-open block; always un-terminated on entry/exit of `lowerStmt`.
+    irs::BasicBlock block;
+    /// Folded local var name -> `Function::locals` index.
     std::unordered_map<std::string, std::uint32_t> localSlots;
+    /// Folded param name -> `Function::params` index.
+    std::unordered_map<std::string, std::uint32_t> paramSlots;
     /// Folded const name -> its literal declaration expr (for inlining at each use).
     std::unordered_map<std::string, const ast::Expr *> constExprs;
+    /// Monotonic counter for unique block labels within this function.
+    std::uint32_t blockCounter{0};
+    /// Folded name of the enclosing function, set only while lowering a function body.
+    std::optional<std::string> functionResultName;
+    /// Value last assigned to `functionResultName`; flows into the final `Return`.
+    irs::ValueId resultValue{};
 };
 
 irs::Operand makeValueOperand(irs::ValueId value) {
@@ -113,6 +148,32 @@ irs::Operand makeLocalOperand(std::uint32_t slot) {
     operand.kind = irs::OperandKind::Local;
     operand.slot = slot;
     return operand;
+}
+
+irs::Operand makeParamOperand(std::uint32_t slot) {
+    irs::Operand operand;
+    operand.kind = irs::OperandKind::Param;
+    operand.slot = slot;
+    return operand;
+}
+
+struct ResolvedSlot {
+    irs::Operand operand;
+    irs::IrType type;
+};
+
+/// Look up a param or local by folded name, scoped to *this* function only (no access to
+/// enclosing-scope locals/globals from within a subprogram — see Stage 3 notes).
+std::optional<ResolvedSlot> resolveSlot(const LowerCtx &ctx, const std::string &folded) {
+    const auto param = ctx.paramSlots.find(folded);
+    if (param != ctx.paramSlots.end()) {
+        return ResolvedSlot{makeParamOperand(param->second), ctx.function.params[param->second].type};
+    }
+    const auto local = ctx.localSlots.find(folded);
+    if (local != ctx.localSlots.end()) {
+        return ResolvedSlot{makeLocalOperand(local->second), ctx.function.locals[local->second].type};
+    }
+    return std::nullopt;
 }
 
 irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr);
@@ -173,23 +234,43 @@ irs::ValueId emitConstString(LowerCtx &ctx, std::string value) {
     return result;
 }
 
-irs::ValueId emitLoadLocal(LowerCtx &ctx, std::uint32_t slot, irs::IrType type) {
+irs::ValueId emitZeroValue(LowerCtx &ctx, irs::IrType type) {
+    switch (type) {
+    case irs::IrType::I32:
+        return emitConstI32(ctx, 0);
+    case irs::IrType::F64:
+        return emitConstF64(ctx, 0.0);
+    case irs::IrType::Bool:
+        return emitConstBool(ctx, false);
+    case irs::IrType::Char:
+        return emitConstChar(ctx, '\0');
+    case irs::IrType::StringRef:
+        return emitConstString(ctx, std::string());
+    case irs::IrType::ArrayRef:
+    case irs::IrType::Void:
+    case irs::IrType::Error:
+        return emitConstI32(ctx, 0);
+    }
+    return emitConstI32(ctx, 0);
+}
+
+irs::ValueId emitLoad(LowerCtx &ctx, irs::Operand source, irs::IrType type) {
     irs::Instr instr;
     instr.op = irs::Op::LoadLocal;
     instr.type = type;
     instr.result = ctx.function.newTemp();
-    instr.a = makeLocalOperand(slot);
+    instr.a = source;
     const irs::ValueId result = instr.result;
     ctx.block.body.push_back(std::move(instr));
     return result;
 }
 
-void emitStoreLocal(LowerCtx &ctx, std::uint32_t slot, irs::ValueId value) {
+void emitStore(LowerCtx &ctx, irs::Operand dest, irs::ValueId value) {
     irs::Instr instr;
     instr.op = irs::Op::StoreLocal;
     instr.type = irs::IrType::Void;
     instr.result = ctx.function.newTemp();
-    instr.a = makeLocalOperand(slot);
+    instr.a = dest;
     instr.b = makeValueOperand(value);
     ctx.block.body.push_back(std::move(instr));
 }
@@ -231,6 +312,39 @@ irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
     return result;
 }
 
+/// Generate a unique block label within the current function.
+std::string newLabel(LowerCtx &ctx, const char *prefix) {
+    return prefix + std::to_string(ctx.blockCounter++);
+}
+
+irs::Terminator branchTo(std::string target) {
+    irs::Terminator term;
+    term.kind = irs::TerminatorKind::Branch;
+    term.target = std::move(target);
+    return term;
+}
+
+irs::Terminator branchIfTo(irs::ValueId cond, std::string trueTarget, std::string falseTarget) {
+    irs::Terminator term;
+    term.kind = irs::TerminatorKind::BranchIf;
+    term.value = cond;
+    term.target = std::move(trueTarget);
+    term.falseTarget = std::move(falseTarget);
+    return term;
+}
+
+/// Attach `term` to the currently-open block, push it into `Function::blocks`, and reset
+/// `ctx.block` to a fresh (unlabeled) block ready for `beginBlock`.
+void sealBlock(LowerCtx &ctx, irs::Terminator term) {
+    ctx.block.term = std::move(term);
+    ctx.function.blocks.push_back(std::move(ctx.block));
+    ctx.block = irs::BasicBlock{};
+}
+
+void beginBlock(LowerCtx &ctx, std::string label) {
+    ctx.block.label = std::move(label);
+}
+
 irs::Op toBinaryOp(ast::BinaryOp op) {
     switch (op) {
     case ast::BinaryOp::Plus:
@@ -268,10 +382,23 @@ irs::Op toBinaryOp(ast::BinaryOp op) {
 
 irs::ValueId lowerIdentifier(LowerCtx &ctx, const ast::Expr &expr) {
     const std::string folded = foldAsciiLower(expr.text);
+
+    // Check this function's own params/locals first: after analyse() returns, a
+    // subprogram's own scope is popped, so `symbols.lookup()` below can no longer resolve
+    // it (or, for a name shared with an outer scope, could mis-resolve to that unrelated
+    // symbol instead).
+    if (const auto slot = resolveSlot(ctx, folded)) {
+        return emitLoad(ctx, slot->operand, slot->type);
+    }
+
     const Symbol *symbol = ctx.symbols.lookup(expr.text);
-    if (!symbol) {
+    if (!symbol || symbol->kind == SymbolKind::Var || symbol->kind == SymbolKind::Param) {
+        // Either genuinely undeclared, or resolved (if at all) to a Var/Param outside this
+        // function's own scope (e.g. an outer program-level var) — not modeled yet.
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "IR lowering: undeclared identifier '" + expr.text + "'");
+                               "IR lowering: accessing enclosing scope locals not "
+                               "supported until a later stage ('" +
+                                   expr.text + "')");
         return emitConstI32(ctx, 0);
     }
 
@@ -291,16 +418,6 @@ irs::ValueId lowerIdentifier(LowerCtx &ctx, const ast::Expr &expr) {
             return emitConstI32(ctx, 0);
         }
         return lowerExpr(ctx, *found->second);
-    }
-    case SymbolKind::Var:
-    case SymbolKind::Param: {
-        const auto slot = ctx.localSlots.find(folded);
-        if (slot == ctx.localSlots.end()) {
-            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                                   "IR lowering: '" + expr.text + "' has no IR local slot");
-            return emitConstI32(ctx, 0);
-        }
-        return emitLoadLocal(ctx, slot->second, toIrType(symbol->type));
     }
     case SymbolKind::Function:
         // Bare function identifier is a zero-argument call; M3 already checked arity.
@@ -405,24 +522,23 @@ void lowerReadCall(LowerCtx &ctx, const std::string &foldedName,
             continue;
         }
         const std::string argFolded = foldAsciiLower(arg->text);
-        const auto slot = ctx.localSlots.find(argFolded);
-        if (slot == ctx.localSlots.end()) {
+        const auto slot = resolveSlot(ctx, argFolded);
+        if (!slot) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg->range.begin,
-                                   "IR lowering: '" + arg->text + "' has no IR local slot for '" +
+                                   "IR lowering: '" + arg->text + "' has no IR slot for '" +
                                        foldedName + "'");
             continue;
         }
-        const irs::IrType varType = ctx.function.locals[slot->second].type;
 
         irs::Instr call;
         call.op = irs::Op::CallRuntime;
-        call.type = varType;
+        call.type = slot->type;
         call.result = ctx.function.newTemp();
         call.text = foldedName;
         const irs::ValueId readValue = call.result;
         ctx.block.body.push_back(std::move(call));
 
-        emitStoreLocal(ctx, slot->second, readValue);
+        emitStore(ctx, slot->operand, readValue);
     }
 }
 
@@ -444,22 +560,139 @@ void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
             argValues.push_back(lowerExpr(ctx, *arg));
         }
     }
-    // Result (if any) is discarded in statement context; Stage 3 attaches real callee
-    // return types once subprogram bodies are lowered.
-    (void)lowerUserCall(ctx, stmt.name, std::move(argValues), irs::IrType::Void);
+
+    irs::IrType calleeReturnType = irs::IrType::Void;
+    if (const Symbol *callee = ctx.symbols.lookup(stmt.name);
+        callee && callee->kind == SymbolKind::Function) {
+        calleeReturnType = toIrType(callee->type);
+    }
+    // Result (if any) is discarded in statement context.
+    (void)lowerUserCall(ctx, stmt.name, std::move(argValues), calleeReturnType);
 }
 
 void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
     const irs::ValueId value = stmt.value ? lowerExpr(ctx, *stmt.value) : emitConstI32(ctx, 0);
     const std::string folded = foldAsciiLower(stmt.name);
-    const auto slot = ctx.localSlots.find(folded);
-    if (slot == ctx.localSlots.end()) {
+
+    if (ctx.functionResultName && folded == *ctx.functionResultName) {
+        // Assigning to the enclosing function's own name sets its return value; there is
+        // no local slot backing it.
+        ctx.resultValue = value;
+        return;
+    }
+
+    const auto slot = resolveSlot(ctx, folded);
+    if (!slot) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
                                "IR lowering: assignment target '" + stmt.name +
                                    "' has no IR local slot");
         return;
     }
-    emitStoreLocal(ctx, slot->second, value);
+    emitStore(ctx, slot->operand, value);
+}
+
+void lowerIf(LowerCtx &ctx, const ast::Stmt &stmt) {
+    const irs::ValueId cond = stmt.condition ? lowerExpr(ctx, *stmt.condition) : emitConstBool(ctx, false);
+    const std::string thenLabel = newLabel(ctx, "if.then.");
+    const std::string endLabel = newLabel(ctx, "if.end.");
+    const bool hasElse = static_cast<bool>(stmt.elseBranch);
+    const std::string elseLabel = hasElse ? newLabel(ctx, "if.else.") : std::string();
+
+    sealBlock(ctx, branchIfTo(cond, thenLabel, hasElse ? elseLabel : endLabel));
+
+    beginBlock(ctx, thenLabel);
+    if (stmt.thenBranch) {
+        lowerStmt(ctx, *stmt.thenBranch);
+    }
+    sealBlock(ctx, branchTo(endLabel));
+
+    if (hasElse) {
+        beginBlock(ctx, elseLabel);
+        lowerStmt(ctx, *stmt.elseBranch);
+        sealBlock(ctx, branchTo(endLabel));
+    }
+
+    beginBlock(ctx, endLabel);
+}
+
+void lowerWhile(LowerCtx &ctx, const ast::Stmt &stmt) {
+    const std::string headLabel = newLabel(ctx, "while.head.");
+    const std::string bodyLabel = newLabel(ctx, "while.body.");
+    const std::string endLabel = newLabel(ctx, "while.end.");
+
+    sealBlock(ctx, branchTo(headLabel));
+
+    beginBlock(ctx, headLabel);
+    const irs::ValueId cond = stmt.condition ? lowerExpr(ctx, *stmt.condition) : emitConstBool(ctx, false);
+    sealBlock(ctx, branchIfTo(cond, bodyLabel, endLabel));
+
+    beginBlock(ctx, bodyLabel);
+    if (stmt.thenBranch) {
+        lowerStmt(ctx, *stmt.thenBranch);
+    }
+    sealBlock(ctx, branchTo(headLabel));
+
+    beginBlock(ctx, endLabel);
+}
+
+void lowerRepeat(LowerCtx &ctx, const ast::Stmt &stmt) {
+    const std::string bodyLabel = newLabel(ctx, "repeat.body.");
+    const std::string endLabel = newLabel(ctx, "repeat.end.");
+
+    sealBlock(ctx, branchTo(bodyLabel));
+
+    beginBlock(ctx, bodyLabel);
+    for (const auto &inner : stmt.statements) {
+        lowerStmt(ctx, inner);
+    }
+    // `repeat ... until cond` loops while `cond` is false.
+    const irs::ValueId cond = stmt.condition ? lowerExpr(ctx, *stmt.condition) : emitConstBool(ctx, true);
+    sealBlock(ctx, branchIfTo(cond, endLabel, bodyLabel));
+
+    beginBlock(ctx, endLabel);
+}
+
+void lowerFor(LowerCtx &ctx, const ast::Stmt &stmt) {
+    const std::string folded = foldAsciiLower(stmt.name);
+    const auto controlSlot = resolveSlot(ctx, folded);
+    if (!controlSlot) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "IR lowering: for-loop control variable '" + stmt.name +
+                                   "' has no IR local slot");
+        return;
+    }
+
+    const irs::ValueId startValue = stmt.value ? lowerExpr(ctx, *stmt.value) : emitConstI32(ctx, 0);
+    emitStore(ctx, controlSlot->operand, startValue);
+    // The limit is evaluated once, before the loop, matching Pascal `for` semantics.
+    const irs::ValueId limitValue =
+        stmt.forLimit ? lowerExpr(ctx, *stmt.forLimit) : emitConstI32(ctx, 0);
+
+    const std::string headLabel = newLabel(ctx, "for.head.");
+    const std::string bodyLabel = newLabel(ctx, "for.body.");
+    const std::string endLabel = newLabel(ctx, "for.end.");
+
+    sealBlock(ctx, branchTo(headLabel));
+
+    beginBlock(ctx, headLabel);
+    const irs::ValueId current = emitLoad(ctx, controlSlot->operand, controlSlot->type);
+    const irs::Op cmpOp = stmt.forDownto ? irs::Op::CmpGe : irs::Op::CmpLe;
+    const irs::ValueId cond = emitBinaryOp(ctx, cmpOp, current, limitValue, irs::IrType::Bool);
+    sealBlock(ctx, branchIfTo(cond, bodyLabel, endLabel));
+
+    beginBlock(ctx, bodyLabel);
+    if (stmt.thenBranch) {
+        lowerStmt(ctx, *stmt.thenBranch);
+    }
+    const irs::ValueId currentAfterBody = emitLoad(ctx, controlSlot->operand, controlSlot->type);
+    const irs::ValueId one = emitConstI32(ctx, 1);
+    const irs::Op stepOp = stmt.forDownto ? irs::Op::Sub : irs::Op::Add;
+    const irs::ValueId next =
+        emitBinaryOp(ctx, stepOp, currentAfterBody, one, controlSlot->type);
+    emitStore(ctx, controlSlot->operand, next);
+    sealBlock(ctx, branchTo(headLabel));
+
+    beginBlock(ctx, endLabel);
 }
 
 void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
@@ -476,13 +709,78 @@ void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
         lowerCallStmt(ctx, stmt);
         break;
     case ast::StmtKind::If:
+        lowerIf(ctx, stmt);
+        break;
     case ast::StmtKind::While:
+        lowerWhile(ctx, stmt);
+        break;
     case ast::StmtKind::Repeat:
+        lowerRepeat(ctx, stmt);
+        break;
     case ast::StmtKind::For:
-        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
-                               "control flow not lowered until Milestone 4 Stage 3");
+        lowerFor(ctx, stmt);
         break;
     }
+}
+
+void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
+    for (const auto &decl : block.consts) {
+        ctx.constExprs.emplace(foldAsciiLower(decl.name), decl.value.get());
+    }
+    for (const auto &decl : block.vars) {
+        const TypePtr localType = resolveTypeDenoter(ctx.symbols, decl.type);
+        const irs::IrType irLocalType = toIrType(localType);
+        for (const auto &name : decl.names) {
+            const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
+            ctx.function.locals.push_back(irs::Local{name, irLocalType});
+            ctx.localSlots.emplace(foldAsciiLower(name), slot);
+        }
+    }
+}
+
+irs::Function lowerFunctionCore(const SymbolTable &symbols,
+                                apollo::common::DiagnosticEngine &diagnostics,
+                                std::string functionName, irs::IrType returnType,
+                                const std::vector<ast::ParamDecl> *params,
+                                const ast::Block &block,
+                                std::optional<std::string> resultName) {
+    irs::Function function;
+    function.name = std::move(functionName);
+    function.returnType = returnType;
+
+    LowerCtx ctx{symbols, diagnostics, function, irs::BasicBlock{"entry"}, {}, {}, {}, 0,
+                resultName, {}};
+
+    if (params) {
+        for (const auto &param : *params) {
+            const TypePtr paramType = resolveTypeDenoter(symbols, param.type);
+            const irs::IrType irParamType = toIrType(paramType);
+            for (const auto &name : param.names) {
+                const auto slot = static_cast<std::uint32_t>(function.params.size());
+                function.params.push_back(irs::Param{name, irParamType});
+                ctx.paramSlots.emplace(foldAsciiLower(name), slot);
+            }
+        }
+    }
+
+    lowerLocalsAndConsts(ctx, block);
+
+    if (resultName) {
+        ctx.resultValue = emitZeroValue(ctx, returnType);
+    }
+
+    for (const auto &stmt : block.body.statements) {
+        lowerStmt(ctx, stmt);
+    }
+
+    irs::Terminator ret;
+    ret.kind = irs::TerminatorKind::Return;
+    if (resultName) {
+        ret.value = ctx.resultValue;
+    }
+    sealBlock(ctx, std::move(ret));
+
+    return function;
 }
 
 } // namespace
@@ -492,37 +790,31 @@ apollo::ir::Module lowerToIr(const ast::Program &program, const SymbolTable &sym
     irs::Module module;
     module.name = program.name;
 
-    irs::Function function;
-    function.name = "main";
-    function.returnType = irs::IrType::Void;
+    module.functions.push_back(lowerFunctionCore(symbols, diagnostics, "main", irs::IrType::Void,
+                                                 /*params=*/nullptr, program.block,
+                                                 /*resultName=*/std::nullopt));
 
-    irs::BasicBlock entry;
-    entry.label = "entry";
+    // Only subprograms declared directly in the program block are lowered (one level);
+    // deeper nesting is diagnosed rather than silently skipped (see Stage 3 notes).
+    for (const auto &sub : program.block.subprograms) {
+        if (!sub.block) {
+            continue;
+        }
+        const Symbol *subSymbol = symbols.lookup(sub.name);
+        const irs::IrType returnType =
+            sub.isFunction && subSymbol ? toIrType(subSymbol->type) : irs::IrType::Void;
+        const std::optional<std::string> resultName =
+            sub.isFunction ? std::optional<std::string>(foldAsciiLower(sub.name)) : std::nullopt;
 
-    LowerCtx ctx{symbols, diagnostics, function, entry, {}, {}};
+        module.functions.push_back(lowerFunctionCore(symbols, diagnostics, sub.name, returnType,
+                                                     &sub.params, *sub.block, resultName));
 
-    for (const auto &decl : program.block.consts) {
-        ctx.constExprs.emplace(foldAsciiLower(decl.name), decl.value.get());
-    }
-
-    for (const auto &decl : program.block.vars) {
-        for (const auto &name : decl.names) {
-            const Symbol *symbol = symbols.lookup(name);
-            const irs::IrType localType = symbol ? toIrType(symbol->type) : irs::IrType::Error;
-            const auto slot = static_cast<std::uint32_t>(function.locals.size());
-            function.locals.push_back(irs::Local{name, localType});
-            ctx.localSlots.emplace(foldAsciiLower(name), slot);
+        if (!sub.block->subprograms.empty()) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error, sub.range.begin,
+                               "nested subprogram lowering not supported until a later stage");
         }
     }
 
-    // User subprograms are not lowered until Stage 3; call sites still lower fine.
-    for (const auto &stmt : program.block.body.statements) {
-        lowerStmt(ctx, stmt);
-    }
-
-    entry.term.kind = irs::TerminatorKind::Return;
-    function.blocks.push_back(std::move(entry));
-    module.functions.push_back(std::move(function));
     return module;
 }
 

@@ -25,10 +25,10 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 1 — Source & scanner infrastructure** is complete.
 **Milestone 2 — Parser** is complete.
 **Milestone 3 — Semantic analysis** is complete (`0.3.0`).
-**Milestone 4 Stages 1–2** (shared IR model + straight-line Pascal lowering) are complete;
-Stages 3–4 of
+**Milestone 4 Stages 1–3** (shared IR model, straight-line Pascal lowering, and control
+flow / subprogram lowering) are complete; Stage 4 of
 [Milestone 4 — Intermediate representation](docs/milestones/04-intermediate-representation.md)
-are next. Toolchain version is `0.4.0` (`PROJECT_VERSION`).
+is next. Toolchain version is `0.4.0` (`PROJECT_VERSION`).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 

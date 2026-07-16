@@ -215,11 +215,70 @@ straight-line compounds (no branching yet beyond what a call implies).
 
 **Acceptance criteria**
 
-- [ ] `examples/hello.pas` and `examples/count.pas` lower with zero diagnostics.
-- [ ] Loop / branch fixtures show distinct blocks (or documented structured form) in the dump.
-- [ ] Existing tests remain green.
+- [x] `examples/hello.pas` and `examples/count.pas` lower with zero diagnostics.
+- [x] Loop / branch fixtures show distinct blocks (or documented structured form) in the dump.
+- [x] Existing tests remain green.
 
-**Status:** not started.
+**Stage 3 notes**
+
+- **Scope-popping discovery:** `SymbolTable` pushes a scope per subprogram body and **pops
+  it** once `walkSubprogram` returns (`src/pascal/semantic/Analyse.cpp`), so after
+  `analyse()` returns, a subprogram's own params/locals are no longer safely queryable via
+  `symbols.lookup()` — the identifier could even resolve to an unrelated symbol of the same
+  name from an outer scope. Mitigation (no M3 changes): `lowerIdentifier` now checks the
+  current function's own `resolveSlot` (params/locals) **before** falling back to
+  `symbols.lookup()`, and treats a `Var`/`Param` symbol found *only* via the fallback (or no
+  symbol at all) as an enclosing-scope access, not a hit. Types are re-resolved fresh from
+  each param/local's `TypeDenoter` via a lowerer-local `resolveTypeDenoter` (duplicates the
+  ~10-line logic of `Analyse.cpp`'s `resolveDenoter`, matching the existing precedent of
+  duplicating `foldAsciiLower` per-TU), which still works because predefined types and
+  program-level `type` aliases live in the retained top scope.
+- **One-level subprogram nesting:** only subprograms declared directly in
+  `program.block.subprograms` are lowered, each into its own flat `ir::Function` named after
+  the Pascal spelling (matching the existing `Call.text` convention). A subprogram's own
+  nested `subprograms` (two levels deep) report an Error diagnostic ("nested subprogram
+  lowering not supported until a later stage") rather than being silently skipped.
+- **No enclosing-scope variable access:** each function's `localSlots`/`paramSlots` are
+  scoped to only that function's own declarations (see scope-popping note above). A body
+  referencing a Var/Param outside its own scope (e.g. an outer program-level var) reports an
+  Error diagnostic ("accessing enclosing scope locals not supported until a later stage")
+  instead of guessing.
+- **`var` parameters:** modeled as ordinary `ir::Param` slots (read/write via
+  `LoadLocal`/`StoreLocal` with a `Param` operand). True call-by-reference write-back to the
+  caller's storage is **not** modeled — deferred to Milestone 5's calling convention.
+- **Function result convention:** a function's own name assigned inside its body (`F :=
+  expr;`) updates a per-lowering `resultValue` (`ValueId`) instead of a `StoreLocal` (there
+  is no local slot backing the function's own name). `resultValue` is seeded with a
+  zero-value literal of the return type before lowering statements, and the function's
+  final `Return` uses it. Bare use of the function's own name in an expression is
+  unaffected — that's already always a fresh 0-arg recursive call per M3.
+- **`LowerCtx.block` is an owned value, not a reference:** Stage 2 bound `block` to a single
+  `entry` `BasicBlock`. Stage 3 needs to seal the current block (attach a terminator, push
+  into `Function.blocks`) and open new ones repeatedly, so `LowerCtx` now owns the "current"
+  `BasicBlock` by value; `sealBlock(ctx, terminator)` / `beginBlock(ctx, label)` replace
+  direct block construction. Invariant: on entry/exit of `lowerStmt`, `ctx.block` is always
+  an open block with no terminator yet.
+- **CFG block-label convention:** `<construct>.<part>.<N>`, `N` from a per-function
+  monotonic `blockCounter` (e.g. `if.then.0`, `while.head.1`, `for.body.2`).
+  - `if`/`else`: `BranchIf cond, then, (else|end)` → `then` → `Branch end`; optional `else`
+    → `Branch end`; continue into `end`.
+  - `while`: `Branch head`; `head` evaluates the condition, `BranchIf cond, body, end`;
+    `body` lowers the loop statement then `Branch head`; continue into `end`.
+  - `repeat...until`: `Branch body`; `body` lowers the statements, evaluates the condition,
+    `BranchIf cond, end, body` (loops while the condition is false); continue into `end`.
+  - `for`: `StoreLocal control, start`; evaluate `limit` once before the loop; `Branch
+    head`; `head` reloads `control`, compares (`CmpLe`/`CmpGe` per `forDownto`) against
+    `limit`, `BranchIf cond, body, end`; `body` lowers the loop statement, reloads
+    `control`, `Add`/`Sub` by `1`, `StoreLocal`, `Branch head`; continue into `end`.
+- **Subprogram lowering:** a shared `lowerFunctionCore(symbols, diagnostics, name,
+  returnType, params, block, resultName) -> ir::Function` is used for both `main` (`params =
+  nullptr`, `resultName = nullopt`) and each top-level subprogram (`resultName` set iff
+  `sub.isFunction`); `lowerToIr` lowers `main` then loops `program.block.subprograms`.
+- **Call-site return type polish:** statement-context user calls (`lowerCallStmt`) now look
+  up the real callee return type via `symbols.lookup(name)` instead of hardcoding `Void`,
+  since callee bodies are now lowered.
+
+**Status:** completed.
 
 ### Stage 4 — Driver, debt close-out & Milestone 4 finish (M4d)
 
@@ -386,7 +445,7 @@ sooner).
 |-------|--------|
 | Stage 1 — Shared IR model & dump | completed |
 | Stage 2 — Straight-line Pascal lowering | completed |
-| Stage 3 — Control flow & subprograms | not started |
+| Stage 3 — Control flow & subprograms | completed |
 | Stage 4 — `--ir`, close-out | not started |
 
 ---

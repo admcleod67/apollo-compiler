@@ -14,11 +14,13 @@
 
 namespace apollo::pascal::ir {
 
-/// Lower a semantically-checked straight-line program into a single-function IR module.
+/// Lower a semantically-checked program into a multi-function IR module.
 ///
-/// Only the top-level program body is lowered in Stage 2: `if`/`while`/`repeat`/`for` and
-/// user subprogram bodies are not yet supported and are skipped with a diagnostic if
-/// encountered (Stage 3). Callers should typically run this only on `--check`-clean input.
+/// The program body lowers to a `main` function; `if`/`while`/`repeat`/`for` lower to
+/// multi-block CFGs. Subprograms declared directly in the program block (one level) each
+/// lower to their own flat IR function. Deeper subprogram nesting and access to enclosing
+/// (non-own) scope locals are not yet supported and are diagnosed rather than guessed.
+/// Callers should typically run this only on `--check`-clean input.
 [[nodiscard]] apollo::ir::Module lowerToIr(const ast::Program &program,
                                            const SymbolTable &symbols,
                                            apollo::common::DiagnosticEngine &diagnostics);
