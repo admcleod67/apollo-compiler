@@ -7,8 +7,10 @@ It is a sister project to **gemini-system**: Gemini provides the Pick-inspired h
 and bytecode VM; Apollo provides portable language front-ends and, over time, a host-agnostic
 runtime path for Gemini applications outside the Gemini Pick OS.
 
-**Initial language:** Pascal  
-**Long-term languages:** BASIC, COMAL, Fortran, COBOL
+**Initial language:** Pascal (deepen toward Wirth console / Pascal80-style before other
+languages — see [Milestone 7](milestones/07-pascal-language-completeness.md))  
+**Long-term languages (deferred):** BASIC, COMAL, Fortran, COBOL
+([Milestone 8](milestones/08-multi-language-expansion.md))
 
 ## High-level goals
 
@@ -41,8 +43,9 @@ flowchart LR
     codegen --> tbc[.tbc / Instruction image]
 ```
 
-Pascal is the first front-end. Later languages plug in at the scanner/parser/AST layers and
-reuse the shared IR and Gemini backend.
+Pascal is the first front-end and the near-term completeness focus. Later languages, when
+resumed, plug in at the scanner/parser/AST layers and reuse the shared IR and Gemini
+backend.
 
 ## Gemini integration (early decision)
 
@@ -66,7 +69,9 @@ text from the book is used directly; only the conceptual methodology informs the
 ## See also
 
 - [Milestones](milestones.md) — roadmap index
-- [Milestone 4 — Intermediate representation](milestones/04-intermediate-representation.md) — completed (M4)
-- [Milestone 5 — Code generator](milestones/05-code-generator.md) — next (`.tbc` emission)
-- [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md)
-- Gemini VM documentation: `gemini-system/docs/vm.md` (sibling repository)
+- [Milestone 5 — Code generator](milestones/05-code-generator.md) — completed
+- [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) — completed
+- [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md)
+- [Milestone 8 — Multi-language expansion](milestones/08-multi-language-expansion.md) (deferred)
+- Gemini VM documentation: `gemini-system/docs/vm.md` / `pick-system/docs/vm.md` (sibling
+  repository)

@@ -7,9 +7,9 @@ environment and bytecode VM; Apollo builds portable language front-ends that com
 
 | | |
 |---|---|
-| **Initial language** | Pascal |
-| **Later languages** | BASIC, COMAL, Fortran, COBOL |
-| **Target** | Gemini VM bytecode (`.tbc` text format preferred for early integration) |
+| **Initial language** | Pascal (Wirth console / Pascal80-style completeness next) |
+| **Later languages** | BASIC, COMAL, Fortran, COBOL (deferred — Milestone 8) |
+| **Target** | Gemini VM bytecode (`.tbc` text format) |
 
 ## Design philosophy
 
@@ -27,7 +27,11 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 3 — Semantic analysis** is complete (`0.3.0`).
 **Milestone 4 — Intermediate representation** is complete (`0.4.0`).
 **Milestone 5 — Code generator** is complete (`0.5.0`).
-Toolchain version is `0.5.0` (`PROJECT_VERSION`).
+**Milestone 6 — Standalone VM execution** is complete (`0.6.0`).
+Toolchain version is `0.6.0` (`PROJECT_VERSION`); cut git tag `v0.6.0` when ready.
+**Next:** [Milestone 7 — Pascal language completeness](docs/milestones/07-pascal-language-completeness.md)
+(Wirth console / Pascal80-style). Multi-language expansion is
+[deferred](docs/milestones/08-multi-language-expansion.md).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
@@ -132,14 +136,15 @@ apollo-compiler/
 ## Relationship to Gemini
 
 - **Gemini** defines the VM instruction set, `.tbc` format, and Pick-hosted tooling
-  (including an in-tree BASIC compiler).
-- **Apollo** aims for clean, modular front-ends sharing a common IR and Gemini backend,
-  and for driving a portable VM runtime usable outside the Gemini Pick OS
-  (see Milestone 6 in `docs/milestones.md`).
+  (including an in-tree BASIC compiler). The Pick-independent **`gemini-vm`** runner
+  executes Apollo `.tbc` with console I/O (Milestone 6).
+- **Apollo** aims for clean, modular front-ends sharing a common IR and Gemini backend.
+  Near-term focus is Pascal language completeness (Milestone 7); further languages are
+  deferred (Milestone 8).
 
-Early codegen will prefer emitting **`.tbc` text** so programs can be loaded and run with
-Gemini’s existing bytecode parser without a hard build-time link. Linking against PickVM
-for in-process tests remains an option later.
+Emit **`.tbc` text** so programs load on Gemini’s existing bytecode parser without a hard
+build-time link to `gemini-core`. Linking against PickVM for in-process tests remains an
+option later.
 
 ## License
 

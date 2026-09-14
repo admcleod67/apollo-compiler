@@ -6,11 +6,14 @@ This document defines **Milestone 6**: run Apollo-compiled programs on a host OS
 without the full Gemini Pick environment, by decoupling a portable VM/runtime from
 Pick-specific shell and filesystem assumptions.
 
+**Status:** completed (`0.6.0`).
+
 **Current status:** the initial standalone proof is complete. Gemini Pick System
 Milestone 19 Stages 1–2 provide the Pick-independent `gemini-vm` runner, and the
 Apollo `hello.pas` and `count.pas` examples run successfully through it using the
 core `PRINT_*` opcodes emitted by Milestone 5. Migration of Pascal builtins to a
-`CALL_FUNC` language module remains follow-on work.
+`CALL_FUNC` language module remains follow-on work. Toolchain version is **`0.6.0`**
+(`PROJECT_VERSION`); cut git tag `v0.6.0` as a separate release follow-up.
 
 It complements:
 
@@ -178,6 +181,8 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 - [x] Apollo-compiled `examples/hello.pas` and `examples/count.pas` run successfully
   on `gemini-vm`.
 - [x] This document records how to run the standalone path.
+- [x] Version policy recorded (reports `0.6.0`; cut git tag `v0.6.0` as a separate
+  release follow-up).
 
 ---
 
@@ -191,3 +196,6 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
   lived in gemini-system (steady-state drop-in module).
 - Optional later extraction of the portable runtime into a shared package/repo if
   cross-project dependency pain justifies it.
+- [Milestone 7 — Pascal language completeness](07-pascal-language-completeness.md)
+  (Wirth console / Pascal80-style; next language priority).
+- [Milestone 8 — Multi-language expansion](08-multi-language-expansion.md) (deferred).
