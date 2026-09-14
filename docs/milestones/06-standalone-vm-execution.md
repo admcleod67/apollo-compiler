@@ -188,7 +188,9 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 
 ## Follow-on (beyond M6)
 
-- Filesystem library extraction in gemini-system.
+- Filesystem library extraction in gemini-system (shared host façade for standalone and
+  Pick backends — prerequisite for Pascal `file` I/O; see
+  [Milestone 7 — Why Pascal `file` I/O waits](07-pascal-language-completeness.md#why-pascal-file-io-waits)).
 - Richer host I/O for both BASIC and future Pascal file support.
 - Switch Apollo’s console binding from bootstrap `PRINT_*` / `INPUT_*` opcodes to
   Gemini namespace 3 `CALL_FUNC` IDs once the Pascal module handlers are available.

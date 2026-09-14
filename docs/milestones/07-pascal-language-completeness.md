@@ -89,6 +89,26 @@ Major Wirth gaps (not yet end-to-end):
 - Objects, overlays, inline assembler, graphics, TP string length types.
 - Additional source languages ([Milestone 8](08-multi-language-expansion.md)).
 
+### Why Pascal `file` I/O waits
+
+Wirth-style files (`file of T`, `text`, sequential `reset`/`rewrite` / `get`/`put`) are a
+**language** contract. Binding those ops to durable storage is a **host** contract:
+
+| Layer | Concern |
+|-------|---------|
+| Apollo | Types, lowering, stable IR / runtime names (or later `CALL_FUNC` IDs) |
+| Gemini host façade | Open/read/write (or get/put) against **either** a portable host FS or Pick VOC/MD |
+
+Standalone `gemini-vm` currently leaves the filesystem unbound; Pick Application/Service
+editions bind a Pick-shaped backend. Implementing Pascal files before a **shared
+filesystem façade** would hard-wire either POSIX paths (wrong inside Gemini) or Pick
+paths (wrong for standalone).
+
+Milestone 7 therefore adds **records** as in-memory Wirth structure (and a prerequisite
+for a later `file of record`) but does **not** ship file I/O. Resume files only after
+Gemini exposes a host-agnostic FS surface that both `gemini-vm` and Pick hosts can bind —
+see also [Milestone 6 follow-on](06-standalone-vm-execution.md#follow-on-beyond-m6).
+
 ---
 
 ## Suggested staged delivery
@@ -107,11 +127,12 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 
 ### Stage 2 — Records (M7b)
 
-**Objective:** Classic Wirth structured data.
+**Objective:** Classic Wirth structured data **in memory**.
 
 - Parse / analyse `record` … `end` and field selection.
 - Lower and emit field load/store (document layout / mangling).
 - Whole-record assign if straightforward; otherwise elementwise / diagnose clearly.
+- Not a commitment to `file of record` in M7 — see **Why Pascal `file` I/O waits** above.
 
 ### Stage 3 — `case` + nesting polish (M7c)
 
@@ -174,7 +195,8 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 ## Follow-on (beyond M7)
 
 - Units and separate compilation.
-- Sets, pointers, file I/O.
+- Sets, pointers, and **file I/O** (after Gemini’s shared filesystem façade — see
+  **Why Pascal `file` I/O waits** above).
 - Richer directives and range-check pragmas.
 - Switch console builtins from `PRINT_*` to `CALL_FUNC` + Pascal module when Gemini’s
   module path is ready.
