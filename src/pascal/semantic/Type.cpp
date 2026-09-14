@@ -39,10 +39,13 @@ TypePtr makeAlias(std::string name, TypePtr underlying) {
     return type;
 }
 
-TypePtr makeArray(TypePtr element) {
+TypePtr makeArray(TypePtr element, std::int64_t indexLow, std::int64_t indexHigh) {
     auto type = std::make_shared<Type>();
     type->tag = TypeTag::Array;
     type->element = std::move(element);
+    type->indexLow = indexLow;
+    type->indexHigh = indexHigh;
+    type->hasBounds = true;
     return type;
 }
 

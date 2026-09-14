@@ -2,6 +2,8 @@
 
 #include "apollo/common/Diagnostic.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -110,13 +112,62 @@ TypePtr typeOfLiteralExpr(const ast::Expr *expr,
     }
 }
 
+std::optional<std::int64_t> evalConstInt(SymbolTable &table, const ast::Expr *expr,
+                                         apollo::common::DiagnosticEngine &diagnostics) {
+    if (!expr) {
+        return std::nullopt;
+    }
+    if (expr->kind == ast::ExprKind::Group) {
+        return evalConstInt(table, expr->left.get(), diagnostics);
+    }
+    if (expr->kind == ast::ExprKind::IntegerLiteral) {
+        try {
+            return std::stoll(expr->text);
+        } catch (...) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                               "invalid integer literal in array bound");
+            return std::nullopt;
+        }
+    }
+    if (expr->kind == ast::ExprKind::Unary && expr->unaryOp == ast::UnaryOp::Minus &&
+        expr->left) {
+        const auto inner = evalConstInt(table, expr->left.get(), diagnostics);
+        if (!inner) {
+            return std::nullopt;
+        }
+        return -*inner;
+    }
+    if (expr->kind == ast::ExprKind::Identifier) {
+        const Symbol *found = table.lookup(expr->text);
+        if (found && found->kind == SymbolKind::Const && found->constExpr) {
+            return evalConstInt(table, found->constExpr, diagnostics);
+        }
+        diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                           "array bound must be a constant integer");
+        return std::nullopt;
+    }
+    diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                       "array bound must be a constant integer");
+    return std::nullopt;
+}
+
 TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
                        apollo::common::DiagnosticEngine &diagnostics) {
     if (denoter.kind == ast::TypeKind::Array) {
         if (!denoter.element) {
             return makeError();
         }
-        return makeArray(resolveDenoter(table, *denoter.element, diagnostics));
+        const auto low = evalConstInt(table, denoter.indexLow.get(), diagnostics);
+        const auto high = evalConstInt(table, denoter.indexHigh.get(), diagnostics);
+        if (!low || !high) {
+            return makeError();
+        }
+        if (*low > *high) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error, denoter.range.begin,
+                               "array lower bound exceeds upper bound");
+            return makeError();
+        }
+        return makeArray(resolveDenoter(table, *denoter.element, diagnostics), *low, *high);
     }
 
     if (denoter.name.empty()) {
@@ -474,6 +525,35 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
             result = makeError();
         }
         break;
+
+    case ast::ExprKind::Index: {
+        TypePtr baseType = makeError();
+        TypePtr indexType = makeError();
+        if (expr.left) {
+            baseType = typeExpr(ctx, *expr.left);
+        }
+        if (expr.right) {
+            indexType = typeExpr(ctx, *expr.right);
+        }
+        const TypePtr peeled = peelAliases(baseType);
+        if (!isError(baseType) && (!peeled || peeled->tag != TypeTag::Array)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                                   "indexed expression requires an array");
+            result = makeError();
+            break;
+        }
+        if (!isError(indexType) && canonicalTag(indexType) != TypeTag::Integer) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   expr.right ? expr.right->range.begin : expr.range.begin,
+                                   "array index must be integer");
+        }
+        if (peeled && peeled->element) {
+            result = peeled->element;
+        } else {
+            result = makeError();
+        }
+        break;
+    }
     }
 
     expr.type = result;
@@ -503,6 +583,33 @@ void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
                                "'" + stmt.name + "' is not assignable");
         return;
+    }
+
+    if (stmt.index) {
+        TypePtr indexType = typeExpr(ctx, *stmt.index);
+        if (!isError(indexType) && canonicalTag(indexType) != TypeTag::Integer) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   stmt.index->range.begin, "array index must be integer");
+        }
+        const TypePtr peeled = peelAliases(destType);
+        if (!isError(destType) && (!peeled || peeled->tag != TypeTag::Array)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "indexed assignment requires an array");
+            return;
+        }
+        destType = peeled && peeled->element ? peeled->element : makeError();
+    } else {
+        const TypePtr peeled = peelAliases(destType);
+        if (peeled && peeled->tag == TypeTag::Array) {
+            if (!isAssignable(destType, rhsType)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                       "incompatible types in assignment");
+                return;
+            }
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "whole-array assignment not supported yet");
+            return;
+        }
     }
 
     if (!isAssignable(destType, rhsType)) {
@@ -645,7 +752,11 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
 void walkBlock(AnalyseCtx &ctx, ast::Block &block) {
     for (const auto &decl : block.consts) {
         TypePtr type = typeOfLiteralExpr(decl.value.get(), ctx.diagnostics);
-        (void)ctx.table.declare(SymbolKind::Const, decl.name, decl.range.begin, std::move(type));
+        if (ctx.table.declare(SymbolKind::Const, decl.name, decl.range.begin, std::move(type))) {
+            if (Symbol *sym = ctx.table.lookupMutable(decl.name)) {
+                sym->constExpr = decl.value.get();
+            }
+        }
     }
     for (const auto &decl : block.types) {
         TypePtr underlying = resolveDenoter(ctx.table, decl.type, ctx.diagnostics);

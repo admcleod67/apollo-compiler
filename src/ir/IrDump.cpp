@@ -51,6 +51,12 @@ const char *opName(Op op) {
         return "load.local";
     case Op::StoreLocal:
         return "store.local";
+    case Op::DimArray:
+        return "dim.array";
+    case Op::LoadIndex:
+        return "load.index";
+    case Op::StoreIndex:
+        return "store.index";
     case Op::Add:
         return "add";
     case Op::Sub:
@@ -143,6 +149,27 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         if (instr.op == Op::StoreLocal) {
             out << ", ";
             dumpOperand(out, instr.b);
+        }
+        break;
+    case Op::DimArray:
+        out << ' ';
+        dumpOperand(out, instr.a);
+        out << ", size " << instr.i64;
+        break;
+    case Op::LoadIndex:
+        out << ' ';
+        dumpOperand(out, instr.a);
+        out << ", ";
+        dumpOperand(out, instr.b);
+        break;
+    case Op::StoreIndex:
+        out << ' ';
+        dumpOperand(out, instr.a);
+        out << ", ";
+        dumpOperand(out, instr.b);
+        if (!instr.args.empty()) {
+            out << ", ";
+            dumpValue(out, instr.args.front());
         }
         break;
     case Op::Add:

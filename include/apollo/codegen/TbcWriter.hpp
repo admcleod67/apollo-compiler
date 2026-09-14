@@ -26,6 +26,7 @@ public:
     void op(std::string_view opcode);
     void op(std::string_view opcode, std::string_view operand);
     void pushInt(std::int64_t value);
+    void pushFlt(double value);
     void pushStr(std::string_view value);
 
     [[nodiscard]] std::string str() const;

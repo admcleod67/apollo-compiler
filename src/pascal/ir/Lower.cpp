@@ -104,7 +104,34 @@ TypePtr resolveTypeDenoter(const SymbolTable &symbols, const ast::TypeDenoter &d
         if (!denoter.element) {
             return makeError();
         }
-        return makeArray(resolveTypeDenoter(symbols, *denoter.element));
+        // Bounds were validated in analyse; re-parse literals/const refs for IR metadata.
+        std::int64_t low = 1;
+        std::int64_t high = 1;
+        auto evalBound = [&](const ast::Expr *expr, std::int64_t &out) {
+            if (!expr) {
+                return;
+            }
+            if (expr->kind == ast::ExprKind::IntegerLiteral) {
+                try {
+                    out = std::stoll(expr->text);
+                } catch (...) {
+                }
+                return;
+            }
+            if (expr->kind == ast::ExprKind::Identifier) {
+                const Symbol *sym = symbols.lookup(expr->text);
+                if (sym && sym->kind == SymbolKind::Const && sym->constExpr &&
+                    sym->constExpr->kind == ast::ExprKind::IntegerLiteral) {
+                    try {
+                        out = std::stoll(sym->constExpr->text);
+                    } catch (...) {
+                    }
+                }
+            }
+        };
+        evalBound(denoter.indexLow.get(), low);
+        evalBound(denoter.indexHigh.get(), high);
+        return makeArray(resolveTypeDenoter(symbols, *denoter.element), low, high);
     }
     if (denoter.name.empty()) {
         return makeError();
@@ -114,6 +141,32 @@ TypePtr resolveTypeDenoter(const SymbolTable &symbols, const ast::TypeDenoter &d
         return makeError();
     }
     return found->type;
+}
+
+void fillArrayMeta(irs::Local &local, const TypePtr &type) {
+    TypePtr peeled = type;
+    while (peeled && peeled->tag == TypeTag::Alias) {
+        peeled = peeled->canonical;
+    }
+    if (!peeled || peeled->tag != TypeTag::Array || !peeled->hasBounds) {
+        return;
+    }
+    local.arrayLow = peeled->indexLow;
+    local.arrayHigh = peeled->indexHigh;
+    local.arrayElement = toIrType(peeled->element);
+}
+
+void fillArrayMeta(irs::Param &param, const TypePtr &type) {
+    TypePtr peeled = type;
+    while (peeled && peeled->tag == TypeTag::Alias) {
+        peeled = peeled->canonical;
+    }
+    if (!peeled || peeled->tag != TypeTag::Array || !peeled->hasBounds) {
+        return;
+    }
+    param.arrayLow = peeled->indexLow;
+    param.arrayHigh = peeled->indexHigh;
+    param.arrayElement = toIrType(peeled->element);
 }
 
 struct LowerCtx {
@@ -272,6 +325,41 @@ void emitStore(LowerCtx &ctx, irs::Operand dest, irs::ValueId value) {
     instr.result = ctx.function.newTemp();
     instr.a = dest;
     instr.b = makeValueOperand(value);
+    ctx.block.body.push_back(std::move(instr));
+}
+
+void emitDimArray(LowerCtx &ctx, irs::Operand dest, std::int64_t size, irs::IrType element) {
+    irs::Instr instr;
+    instr.op = irs::Op::DimArray;
+    instr.type = element;
+    instr.result = ctx.function.newTemp();
+    instr.a = dest;
+    instr.i64 = size;
+    ctx.block.body.push_back(std::move(instr));
+}
+
+irs::ValueId emitLoadIndex(LowerCtx &ctx, irs::Operand arraySlot, irs::ValueId index,
+                           irs::IrType elementType) {
+    irs::Instr instr;
+    instr.op = irs::Op::LoadIndex;
+    instr.type = elementType;
+    instr.result = ctx.function.newTemp();
+    instr.a = arraySlot;
+    instr.b = makeValueOperand(index);
+    const irs::ValueId result = instr.result;
+    ctx.block.body.push_back(std::move(instr));
+    return result;
+}
+
+void emitStoreIndex(LowerCtx &ctx, irs::Operand arraySlot, irs::ValueId index,
+                    irs::ValueId value) {
+    irs::Instr instr;
+    instr.op = irs::Op::StoreIndex;
+    instr.type = irs::IrType::Void;
+    instr.result = ctx.function.newTemp();
+    instr.a = arraySlot;
+    instr.b = makeValueOperand(value);
+    instr.args.push_back(index);
     ctx.block.body.push_back(std::move(instr));
 }
 
@@ -461,6 +549,31 @@ irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
     return lowerUserCall(ctx, expr.text, std::move(argValues), toIrType(expr.type));
 }
 
+irs::ValueId lowerIndexExpr(LowerCtx &ctx, const ast::Expr &expr) {
+    if (!expr.left || expr.left->kind != ast::ExprKind::Identifier) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                               "IR lowering: only identifier array bases are supported");
+        return emitConstI32(ctx, 0);
+    }
+    const auto slot = resolveSlot(ctx, foldAsciiLower(expr.left->text));
+    if (!slot) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                               "IR lowering: array '" + expr.left->text + "' has no local slot");
+        return emitConstI32(ctx, 0);
+    }
+    const irs::ValueId index =
+        expr.right ? lowerExpr(ctx, *expr.right) : emitConstI32(ctx, 0);
+    irs::IrType elementType = toIrType(expr.type);
+    if (slot->operand.kind == irs::OperandKind::Local &&
+        slot->operand.slot < ctx.function.locals.size()) {
+        elementType = ctx.function.locals[slot->operand.slot].arrayElement;
+    } else if (slot->operand.kind == irs::OperandKind::Param &&
+               slot->operand.slot < ctx.function.params.size()) {
+        elementType = ctx.function.params[slot->operand.slot].arrayElement;
+    }
+    return emitLoadIndex(ctx, slot->operand, index, elementType);
+}
+
 irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
     irs::ValueId result{};
     switch (expr.kind) {
@@ -492,6 +605,9 @@ irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
         break;
     case ast::ExprKind::Group:
         result = expr.left ? lowerExpr(ctx, *expr.left) : emitConstI32(ctx, 0);
+        break;
+    case ast::ExprKind::Index:
+        result = lowerIndexExpr(ctx, expr);
         break;
     }
     return result;
@@ -586,6 +702,11 @@ void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
                                "IR lowering: assignment target '" + stmt.name +
                                    "' has no IR local slot");
+        return;
+    }
+    if (stmt.index) {
+        const irs::ValueId index = lowerExpr(ctx, *stmt.index);
+        emitStoreIndex(ctx, slot->operand, index, value);
         return;
     }
     emitStore(ctx, slot->operand, value);
@@ -732,9 +853,25 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
         const irs::IrType irLocalType = toIrType(localType);
         for (const auto &name : decl.names) {
             const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
-            ctx.function.locals.push_back(irs::Local{name, irLocalType});
+            irs::Local local{name, irLocalType};
+            fillArrayMeta(local, localType);
+            ctx.function.locals.push_back(std::move(local));
             ctx.localSlots.emplace(foldAsciiLower(name), slot);
         }
+    }
+}
+
+void emitArrayDims(LowerCtx &ctx) {
+    for (std::uint32_t i = 0; i < ctx.function.locals.size(); ++i) {
+        const irs::Local &local = ctx.function.locals[i];
+        if (local.type != irs::IrType::ArrayRef || !local.arrayLow || !local.arrayHigh) {
+            continue;
+        }
+        const std::int64_t size = *local.arrayHigh - *local.arrayLow + 1;
+        if (size < 1) {
+            continue;
+        }
+        emitDimArray(ctx, makeLocalOperand(i), size, local.arrayElement);
     }
 }
 
@@ -757,13 +894,16 @@ irs::Function lowerFunctionCore(const SymbolTable &symbols,
             const irs::IrType irParamType = toIrType(paramType);
             for (const auto &name : param.names) {
                 const auto slot = static_cast<std::uint32_t>(function.params.size());
-                function.params.push_back(irs::Param{name, irParamType});
+                irs::Param p{name, irParamType};
+                fillArrayMeta(p, paramType);
+                function.params.push_back(std::move(p));
                 ctx.paramSlots.emplace(foldAsciiLower(name), slot);
             }
         }
     }
 
     lowerLocalsAndConsts(ctx, block);
+    emitArrayDims(ctx);
 
     if (resultName) {
         ctx.resultValue = emitZeroValue(ctx, returnType);

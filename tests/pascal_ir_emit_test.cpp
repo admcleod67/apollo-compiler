@@ -178,5 +178,58 @@ int main() {
         }
     }
 
+    // real literal → PUSH_FLT
+    {
+        ScanAnalyseLowerEmit run("real.pas",
+                                 "program RealDemo;\n"
+                                 "var\n"
+                                 "  x: real;\n"
+                                 "begin\n"
+                                 "  x := 3.5;\n"
+                                 "  writeln(x);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("real fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_FLT")) {
+            return fail("real fixture .tbc missing PUSH_FLT");
+        }
+    }
+
+    // integer mod → DIV/MUL/SUB sequence
+    {
+        ScanAnalyseLowerEmit run("mod.pas",
+                                 "program ModDemo;\n"
+                                 "begin\n"
+                                 "  writeln(10 mod 3);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("mod fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "DIV") || !contains(run.tbc, "MUL") ||
+            !contains(run.tbc, "SUB")) {
+            return fail("mod fixture .tbc missing DIV/MUL/SUB remainder sequence");
+        }
+    }
+
+    // array index: DIM_ARRAY + LOAD_ARR / STORE_ARR
+    {
+        ScanAnalyseLowerEmit run("arr.pas",
+                                 "program ArrDemo;\n"
+                                 "var\n"
+                                 "  a: array [0..2] of integer;\n"
+                                 "begin\n"
+                                 "  a[1] := 7;\n"
+                                 "  writeln(a[1]);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("array fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "DIM_ARRAY") || !contains(run.tbc, "STORE_ARR") ||
+            !contains(run.tbc, "LOAD_ARR")) {
+            return fail("array fixture .tbc missing DIM_ARRAY / STORE_ARR / LOAD_ARR");
+        }
+    }
+
     return 0;
 }

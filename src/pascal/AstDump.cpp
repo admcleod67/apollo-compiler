@@ -135,6 +135,19 @@ void dumpExpr(std::ostream &out, const ast::Expr &expr, int depth) {
             dumpExpr(out, *expr.left, depth + 1);
         }
         break;
+    case ast::ExprKind::Index:
+        out << "IndexExpr\n";
+        if (expr.left) {
+            indent(out, depth + 1);
+            out << "Base\n";
+            dumpExpr(out, *expr.left, depth + 2);
+        }
+        if (expr.right) {
+            indent(out, depth + 1);
+            out << "Index\n";
+            dumpExpr(out, *expr.right, depth + 2);
+        }
+        break;
     }
 }
 
@@ -175,6 +188,11 @@ void dumpStmt(std::ostream &out, const ast::Stmt &stmt, int depth) {
         break;
     case ast::StmtKind::Assign:
         out << "AssignStmt " << stmt.name << '\n';
+        if (stmt.index) {
+            indent(out, depth + 1);
+            out << "Index\n";
+            dumpExpr(out, *stmt.index, depth + 2);
+        }
         if (stmt.value) {
             dumpExpr(out, *stmt.value, depth + 1);
         }

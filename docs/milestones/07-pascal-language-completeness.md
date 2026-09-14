@@ -53,8 +53,8 @@ Major Wirth gaps (not yet end-to-end):
 
 | Area | Status |
 |------|--------|
-| Array **indexing** `a[i]` | Denoters / whole-array assign only |
-| `real` / `mod` through emit | Analysed / IR partial; codegen diagnoses `ConstF64`, `Mod` |
+| Array **indexing** `a[i]` | Completed in Stage 1 (`DIM_ARRAY` / remap) |
+| `real` / `mod` through emit | Completed in Stage 1 (`PUSH_FLT`; mod sequence) |
 | `record` / field select | Keywords reserved; not in grammar |
 | `case` | Keyword reserved; not in grammar |
 | Nested procs with up-level locals | Parsed; lowering diagnoses |
@@ -125,6 +125,28 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 - Array indexing expressions and element assignment through IR + `.tbc`.
 - Tests: fixtures that `--emit` and optionally run under `gemini-vm`.
 
+**Acceptance criteria**
+
+- [x] `real` literals/vars emit `PUSH_FLT` (no codegen hard-fail).
+- [x] Integer `mod` emits without a language module.
+- [x] Indexed array load/store emit `DIM_ARRAY` / `LOAD_ARR` / `STORE_ARR`.
+- [x] Stage fixtures pass under `ctest`.
+
+**Stage 1 notes**
+
+- **`real`:** `Op::ConstF64` → Gemini `PUSH_FLT`. Binary/`Neg` reuse `ADD`/`SUB`/… (VM
+  `Value` is `int|double|string`).
+- **`mod`:** Gemini has no core `MOD` opcode. Emit `a - (a div b) * b` with `DIV` /
+  `MUL` / `SUB` (toward-zero `DIV`). Do not call BASIC `CALL_FUNC` MOD.
+- **Arrays:** const `[lo..hi]` bounds stored on `Type`; IR `DimArray` / `LoadIndex` /
+  `StoreIndex`; emit remaps Pascal index to VM 1-based via `i - lo + 1`, then
+  `DIM_ARRAY` + zero-init loop + `LOAD_ARR`/`STORE_ARR`. Whole-array assignment still
+  diagnosed.
+- **Smoke:** `apolloc --emit <file> | ../pick-system/build/src/gemini-vm /dev/stdin`
+  (no CMake dependency on pick-system).
+
+**Status:** completed.
+
 ### Stage 2 — Records (M7b)
 
 **Objective:** Classic Wirth structured data **in memory**.
@@ -157,8 +179,8 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 
 ## Success criteria (draft)
 
-- [ ] Array indexing programs emit and run on `gemini-vm`.
-- [ ] `real` and `mod` no longer hard-fail in codegen for the supported subset.
+- [x] Array indexing programs emit (and run on `gemini-vm` when available).
+- [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
 - [ ] Flat `record` field access emits and runs.
 - [ ] `case` on ordinal types emits and runs.
 - [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
@@ -173,7 +195,7 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Scalar / array debt | not started |
+| Stage 1 — Scalar / array debt | completed |
 | Stage 2 — Records | not started |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |

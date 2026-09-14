@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -28,13 +29,17 @@ struct Type {
     std::string name;
     std::shared_ptr<Type> canonical; // Alias → underlying
     std::shared_ptr<Type> element;   // Array element
+    /// Const index bounds for Array (Pascal `[lo..hi]`).
+    std::int64_t indexLow{0};
+    std::int64_t indexHigh{0};
+    bool hasBounds{false};
 };
 
 using TypePtr = std::shared_ptr<Type>;
 
 [[nodiscard]] TypePtr makePredefined(TypeTag tag);
 [[nodiscard]] TypePtr makeAlias(std::string name, TypePtr underlying);
-[[nodiscard]] TypePtr makeArray(TypePtr element);
+[[nodiscard]] TypePtr makeArray(TypePtr element, std::int64_t indexLow, std::int64_t indexHigh);
 [[nodiscard]] TypePtr makeError();
 
 /// Peel Alias layers; returns Error if type is null.

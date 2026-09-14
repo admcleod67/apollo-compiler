@@ -147,59 +147,68 @@ std::unique_ptr<ast::Expr> parseFactor(TokenCursor &cursor) {
         return expr;
     }
 
+    std::unique_ptr<ast::Expr> primary;
+
     if (cursor.match(TokenKind::LeftParen)) {
         auto inner = parseExpression(cursor);
         const Token &closeTok = cursor.current();
         (void)cursor.expect(TokenKind::RightParen, "expected ')'");
-        auto expr = std::make_unique<ast::Expr>();
-        expr->kind = ast::ExprKind::Group;
-        expr->left = std::move(inner);
-        expr->range = span(tok, closeTok);
-        return expr;
-    }
-
-    if (cursor.check(TokenKind::IntegerLiteral) || cursor.check(TokenKind::RealLiteral) ||
-        cursor.check(TokenKind::StringLiteral) || cursor.check(TokenKind::CharLiteral)) {
-        auto expr = std::make_unique<ast::Expr>();
+        primary = std::make_unique<ast::Expr>();
+        primary->kind = ast::ExprKind::Group;
+        primary->left = std::move(inner);
+        primary->range = span(tok, closeTok);
+    } else if (cursor.check(TokenKind::IntegerLiteral) || cursor.check(TokenKind::RealLiteral) ||
+               cursor.check(TokenKind::StringLiteral) || cursor.check(TokenKind::CharLiteral)) {
+        primary = std::make_unique<ast::Expr>();
         switch (cursor.current().kind) {
         case TokenKind::IntegerLiteral:
-            expr->kind = ast::ExprKind::IntegerLiteral;
+            primary->kind = ast::ExprKind::IntegerLiteral;
             break;
         case TokenKind::RealLiteral:
-            expr->kind = ast::ExprKind::RealLiteral;
+            primary->kind = ast::ExprKind::RealLiteral;
             break;
         case TokenKind::StringLiteral:
-            expr->kind = ast::ExprKind::StringLiteral;
+            primary->kind = ast::ExprKind::StringLiteral;
             break;
         default:
-            expr->kind = ast::ExprKind::CharLiteral;
+            primary->kind = ast::ExprKind::CharLiteral;
             break;
         }
-        expr->text = std::string(cursor.current().lexeme);
-        expr->range = cursor.current().range;
+        primary->text = std::string(cursor.current().lexeme);
+        primary->range = cursor.current().range;
         cursor.advance();
-        return expr;
-    }
-
-    if (cursor.check(TokenKind::Identifier)) {
-        auto expr = std::make_unique<ast::Expr>();
-        expr->text = std::string(cursor.current().lexeme);
-        expr->range = cursor.current().range;
+    } else if (cursor.check(TokenKind::Identifier)) {
+        primary = std::make_unique<ast::Expr>();
+        primary->text = std::string(cursor.current().lexeme);
+        primary->range = cursor.current().range;
         cursor.advance();
         if (cursor.match(TokenKind::LeftParen)) {
-            expr->kind = ast::ExprKind::Call;
-            expr->args = parseArgList(cursor);
+            primary->kind = ast::ExprKind::Call;
+            primary->args = parseArgList(cursor);
             const Token &closeTok = cursor.current();
             (void)cursor.expect(TokenKind::RightParen, "expected ')' after arguments");
-            expr->range = spanRanges(expr->range, closeTok.range);
-            return expr;
+            primary->range = spanRanges(primary->range, closeTok.range);
+        } else {
+            primary->kind = ast::ExprKind::Identifier;
         }
-        expr->kind = ast::ExprKind::Identifier;
-        return expr;
+    } else {
+        (void)cursor.expect(TokenKind::Identifier, "expected expression");
+        return nullptr;
     }
 
-    (void)cursor.expect(TokenKind::Identifier, "expected expression");
-    return nullptr;
+    while (cursor.match(TokenKind::LeftBracket)) {
+        auto index = parseExpression(cursor);
+        const Token &closeTok = cursor.current();
+        (void)cursor.expect(TokenKind::RightBracket, "expected ']' after index");
+        auto expr = std::make_unique<ast::Expr>();
+        expr->kind = ast::ExprKind::Index;
+        expr->left = std::move(primary);
+        expr->right = std::move(index);
+        expr->range = spanRanges(expr->left ? expr->left->range : tok.range, closeTok.range);
+        primary = std::move(expr);
+    }
+
+    return primary;
 }
 
 std::unique_ptr<ast::Expr> parseTerm(TokenCursor &cursor) {
@@ -585,6 +594,24 @@ ast::Stmt parseStatement(TokenCursor &cursor) {
         stmt.name = std::string(nameTok.lexeme);
         stmt.range = nameTok.range;
         cursor.advance();
+
+        if (cursor.match(TokenKind::LeftBracket)) {
+            stmt.index = parseExpression(cursor);
+            const Token &closeTok = cursor.current();
+            (void)cursor.expect(TokenKind::RightBracket, "expected ']' after index");
+            stmt.range = spanRanges(nameTok.range, closeTok.range);
+            if (!cursor.expect(TokenKind::Assign, "expected ':=' after indexed variable")) {
+                syncStatement(cursor);
+                stmt.kind = ast::StmtKind::Assign;
+                return stmt;
+            }
+            stmt.kind = ast::StmtKind::Assign;
+            stmt.value = parseExpression(cursor);
+            if (stmt.value) {
+                stmt.range = spanRanges(nameTok.range, stmt.value->range);
+            }
+            return stmt;
+        }
 
         if (cursor.match(TokenKind::Assign)) {
             stmt.kind = ast::StmtKind::Assign;

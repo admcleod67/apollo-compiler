@@ -57,6 +57,10 @@ void TbcWriter::pushInt(std::int64_t value) {
     buffer_ << kInstrIndent << "PUSH_INT " << value << '\n';
 }
 
+void TbcWriter::pushFlt(double value) {
+    buffer_ << kInstrIndent << "PUSH_FLT " << value << '\n';
+}
+
 void TbcWriter::pushStr(std::string_view value) {
     buffer_ << kInstrIndent << "PUSH_STR \"" << escapeTbcString(value) << "\"\n";
 }

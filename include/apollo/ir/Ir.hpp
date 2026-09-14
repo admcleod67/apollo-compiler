@@ -34,6 +34,9 @@ enum class Op {
     Copy,
     LoadLocal,
     StoreLocal,
+    DimArray,
+    LoadIndex,
+    StoreIndex,
     Add,
     Sub,
     Mul,
@@ -109,11 +112,18 @@ struct BasicBlock {
 struct Param {
     std::string name;
     IrType type{IrType::Error};
+    /// Present when `type == ArrayRef` (Pascal `[lo..hi]` low bound).
+    std::optional<std::int64_t> arrayLow;
+    std::optional<std::int64_t> arrayHigh;
+    IrType arrayElement{IrType::Error};
 };
 
 struct Local {
     std::string name;
     IrType type{IrType::Error};
+    std::optional<std::int64_t> arrayLow;
+    std::optional<std::int64_t> arrayHigh;
+    IrType arrayElement{IrType::Error};
 };
 
 struct Function {

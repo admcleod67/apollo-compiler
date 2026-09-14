@@ -63,5 +63,13 @@ int main() {
         }
     }
 
+    {
+        apollo::codegen::TbcWriter writer;
+        writer.pushFlt(3.5);
+        if (writer.str().find("PUSH_FLT 3.5") == std::string::npos) {
+            return fail("PUSH_FLT emission mismatch");
+        }
+    }
+
     return 0;
 }

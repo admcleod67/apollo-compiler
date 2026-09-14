@@ -102,9 +102,9 @@ emission from `apolloc` and freeze the contract for Milestone 6.
 |----|------------------------|
 | `ConstI32` / `ConstBool` / `ConstChar` | `PUSH_INT` (bool as 0/1; char as code point) |
 | `ConstString` | `PUSH_STR "..."` (escape per Gemini rules) |
-| `ConstF64` | Deferred / diagnose unless a later stage defines a convention |
+| `ConstF64` | `PUSH_FLT` (Milestone 7 Stage 1) |
 | `LoadLocal` / `StoreLocal` (local or param slot) | `LOAD_VAR` / `STORE_VAR` with mangled name |
-| `Add`/`Sub`/`Mul`/`Div`/`Mod` | `ADD`/`SUB`/`MUL`/`DIV` (+ `Mod` via documented sequence or diagnose) |
+| `Add`/`Sub`/`Mul`/`Div`/`Mod` | `ADD`/`SUB`/`MUL`/`DIV`; `Mod` → `a-(a div b)*b` sequence (M7a) |
 | `Neg` / `Not` | Arithmetic / logical sequences on ints |
 | `And` / `Or` | Integer 0/1 bitwise-style sequences (document exact form in Stage 2 notes) |
 | `Cmp*` | `EQ`/`NE`/`LT`/`LE`/`GT`/`GE` |
@@ -308,7 +308,9 @@ produces runnable bytecode.
   `<fn>$<paramName>`. Function results stay on the stack through `RETURN`; the caller’s
   `Op::Call` result temp is spilled like any other value. `var` params remain ordinary
   value slots (no write-back).
-- **Still diagnosed:** `ConstF64`, `Mod`, `Copy`.
+- **Still diagnosed:** `Copy` (unused). Milestone 7 Stage 1 emits `ConstF64` → `PUSH_FLT`
+  and `Mod` as a `DIV`/`MUL`/`SUB` remainder sequence; arrays use `DIM_ARRAY` /
+  `LOAD_ARR` / `STORE_ARR` with Pascal `[lo..hi]` remapped to 1-based VM indices.
 
 **Status:** completed.
 

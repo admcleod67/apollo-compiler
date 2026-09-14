@@ -50,6 +50,7 @@ enum class ExprKind {
     Binary,
     Call,
     Group,
+    Index,
 };
 
 struct Expr {
@@ -132,6 +133,8 @@ struct Stmt {
     apollo::common::SourceRange range{};
     /// Assign LHS, call callee, or for-loop control variable.
     std::string name;
+    /// When set on Assign, LHS is `name[index]` rather than a bare variable.
+    std::unique_ptr<Expr> index;
     std::unique_ptr<Expr> value;
     std::vector<std::unique_ptr<Expr>> args;
     std::vector<Stmt> statements;

@@ -244,7 +244,7 @@ int main() {
         }
     }
 
-    // Compatible array assignment (same element type)
+    // Compatible array assignment deferred (diagnose whole-array).
     {
         ScanAnalyse run("arrayok.pas",
                         "program P;\n"
@@ -254,8 +254,8 @@ int main() {
                         "begin\n"
                         "  a := b;\n"
                         "end.\n");
-        if (run.diagnostics.errorCount() != 0) {
-            return fail("array of integer := array of integer should be clean");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("whole-array assignment should diagnose until supported");
         }
     }
 
@@ -271,6 +271,36 @@ int main() {
                         "end.\n");
         if (run.diagnostics.errorCount() == 0) {
             return fail("array of integer := array of real should diagnose");
+        }
+    }
+
+    // Indexed assign and load type-check.
+    {
+        ScanAnalyse run("arrayidx.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  a: array [0..2] of integer;\n"
+                        "  i: integer;\n"
+                        "begin\n"
+                        "  a[1] := 42;\n"
+                        "  i := a[1];\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("indexed array assign/load should be clean");
+        }
+    }
+
+    // Non-const array bound.
+    {
+        ScanAnalyse run("arraybound.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  n: integer;\n"
+                        "  a: array [1..n] of integer;\n"
+                        "begin\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("non-const array bound should diagnose");
         }
     }
 

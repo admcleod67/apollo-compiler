@@ -4,9 +4,11 @@
 #include "apollo/common/Diagnostic.hpp"
 #include "apollo/common/SourceLocation.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <sstream>
 #include <utility>
 
 namespace apollo::codegen {
@@ -164,11 +166,154 @@ irs::ValueId operandValue(const irs::Operand &operand) {
     return operand.value;
 }
 
+
+std::optional<std::int64_t> arrayLowBound(const irs::Function &function, const irs::Operand &operand) {
+    if (operand.kind == irs::OperandKind::Local && operand.slot < function.locals.size()) {
+        return function.locals[operand.slot].arrayLow;
+    }
+    if (operand.kind == irs::OperandKind::Param && operand.slot < function.params.size()) {
+        return function.params[operand.slot].arrayLow;
+    }
+    return std::nullopt;
+}
+
+irs::IrType arrayElementType(const irs::Function &function, const irs::Operand &operand) {
+    if (operand.kind == irs::OperandKind::Local && operand.slot < function.locals.size()) {
+        return function.locals[operand.slot].arrayElement;
+    }
+    if (operand.kind == irs::OperandKind::Param && operand.slot < function.params.size()) {
+        return function.params[operand.slot].arrayElement;
+    }
+    return irs::IrType::Error;
+}
+
+void emitMod(EmitCtx &ctx, irs::ValueId left, irs::ValueId right, irs::ValueId result) {
+    // a - (a div b) * b using Gemini DIV (toward zero).
+    spillStackTop(ctx);
+    if (ctx.spilled.count(left.id) == 0 || ctx.spilled.count(right.id) == 0) {
+        ctx.fail("codegen: mod operands unavailable");
+        return;
+    }
+    const std::string quot = mangleTemp(ctx.function.name, result) + "$quot";
+    const std::string prod = mangleTemp(ctx.function.name, result) + "$prod";
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, left));
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, right));
+    ctx.writer.op("DIV");
+    ctx.writer.op("STORE_VAR", quot);
+    ctx.writer.op("LOAD_VAR", quot);
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, right));
+    ctx.writer.op("MUL");
+    ctx.writer.op("STORE_VAR", prod);
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, left));
+    ctx.writer.op("LOAD_VAR", prod);
+    ctx.writer.op("SUB");
+    ctx.stackTop = result;
+}
+
+void emitVmIndex(EmitCtx &ctx, irs::ValueId pascalIndex, std::int64_t arrayLow) {
+    // vmIndex = pascalIndex - arrayLow + 1
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, pascalIndex));
+    ctx.writer.pushInt(arrayLow);
+    ctx.writer.op("SUB");
+    ctx.writer.pushInt(1);
+    ctx.writer.op("ADD");
+}
+
+void emitDimArray(EmitCtx &ctx, const irs::Instr &instr) {
+    spillStackTop(ctx);
+    const std::string name = slotName(ctx.function, instr.a);
+    const std::int64_t size = instr.i64;
+    if (size < 1) {
+        ctx.fail("codegen: DimArray size must be >= 1");
+        return;
+    }
+    ctx.writer.pushInt(size);
+    ctx.writer.op("DIM_ARRAY", name);
+
+    const std::string dimVar = name + "$dim";
+    const std::string iVar = name + "$i";
+    const std::string head = name + "$init.head";
+    const std::string end = name + "$init.end";
+    ctx.writer.pushInt(size);
+    ctx.writer.op("STORE_VAR", dimVar);
+    ctx.writer.pushInt(1);
+    ctx.writer.op("STORE_VAR", iVar);
+    ctx.writer.op("JUMP", head);
+    ctx.writer.label(head);
+    ctx.writer.op("LOAD_VAR", iVar);
+    ctx.writer.op("LOAD_VAR", dimVar);
+    ctx.writer.op("LE");
+    ctx.writer.op("JZ", end);
+    switch (instr.type) {
+    case irs::IrType::F64:
+        ctx.writer.pushFlt(0.0);
+        break;
+    case irs::IrType::StringRef:
+        ctx.writer.pushStr("");
+        break;
+    default:
+        ctx.writer.pushInt(0);
+        break;
+    }
+    ctx.writer.op("LOAD_VAR", iVar);
+    ctx.writer.op("STORE_ARR", name);
+    ctx.writer.op("LOAD_VAR", iVar);
+    ctx.writer.pushInt(1);
+    ctx.writer.op("ADD");
+    ctx.writer.op("STORE_VAR", iVar);
+    ctx.writer.op("JUMP", head);
+    ctx.writer.label(end);
+}
+
+void emitLoadIndex(EmitCtx &ctx, const irs::Instr &instr) {
+    spillStackTop(ctx);
+    const auto low = arrayLowBound(ctx.function, instr.a);
+    if (!low) {
+        ctx.fail("codegen: LoadIndex missing array low bound");
+        return;
+    }
+    const irs::ValueId index = operandValue(instr.b);
+    if (ctx.spilled.count(index.id) == 0) {
+        ctx.fail("codegen: LoadIndex index unavailable");
+        return;
+    }
+    emitVmIndex(ctx, index, *low);
+    ctx.writer.op("LOAD_ARR", slotName(ctx.function, instr.a));
+    ctx.stackTop = instr.result;
+}
+
+void emitStoreIndex(EmitCtx &ctx, const irs::Instr &instr) {
+    spillStackTop(ctx);
+    const auto low = arrayLowBound(ctx.function, instr.a);
+    if (!low) {
+        ctx.fail("codegen: StoreIndex missing array low bound");
+        return;
+    }
+    if (instr.args.empty()) {
+        ctx.fail("codegen: StoreIndex missing index");
+        return;
+    }
+    const irs::ValueId value = operandValue(instr.b);
+    const irs::ValueId index = instr.args.front();
+    if (ctx.spilled.count(value.id) == 0 || ctx.spilled.count(index.id) == 0) {
+        ctx.fail("codegen: StoreIndex operands unavailable");
+        return;
+    }
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, value));
+    emitVmIndex(ctx, index, *low);
+    ctx.writer.op("STORE_ARR", slotName(ctx.function, instr.a));
+    ctx.stackTop.reset();
+}
+
+
 void emitConst(EmitCtx &ctx, const irs::Instr &instr) {
     spillStackTop(ctx);
     switch (instr.op) {
     case irs::Op::ConstI32:
         emitPushInt(ctx, instr.i64);
+        break;
+    case irs::Op::ConstF64:
+        ctx.writer.pushFlt(instr.f64);
         break;
     case irs::Op::ConstBool:
         emitPushInt(ctx, instr.boolean ? 1 : 0);
@@ -272,6 +417,7 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
 
     switch (instr.op) {
     case irs::Op::ConstI32:
+    case irs::Op::ConstF64:
     case irs::Op::ConstBool:
     case irs::Op::ConstChar:
     case irs::Op::ConstString:
@@ -300,6 +446,20 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
     case irs::Op::Div:
         emitBinary(ctx, "DIV", operandValue(instr.a), operandValue(instr.b), instr.result);
         spillStackTop(ctx);
+        break;
+    case irs::Op::Mod:
+        emitMod(ctx, operandValue(instr.a), operandValue(instr.b), instr.result);
+        spillStackTop(ctx);
+        break;
+    case irs::Op::DimArray:
+        emitDimArray(ctx, instr);
+        break;
+    case irs::Op::LoadIndex:
+        emitLoadIndex(ctx, instr);
+        spillStackTop(ctx);
+        break;
+    case irs::Op::StoreIndex:
+        emitStoreIndex(ctx, instr);
         break;
     case irs::Op::Neg:
         emitUnaryNeg(ctx, operandValue(instr.a), instr.result);
@@ -336,14 +496,8 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
     case irs::Op::Call:
         emitUserCall(ctx, instr);
         break;
-    case irs::Op::ConstF64:
-        ctx.fail("codegen: ConstF64 not supported in Milestone 5 Stage 3");
-        break;
-    case irs::Op::Mod:
-        ctx.fail("codegen: Mod not supported in Milestone 5 Stage 3");
-        break;
     case irs::Op::Copy:
-        ctx.fail("codegen: Copy not supported in Milestone 5 Stage 3");
+        ctx.fail("codegen: Copy not supported yet");
         break;
     }
 }
