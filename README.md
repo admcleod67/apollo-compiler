@@ -94,7 +94,8 @@ Diagnostics go to stderr; the process exits non-zero if any errors were reported
 
 Scans, parses, and semantically analyses Pascal source (no AST dump). Diagnostics go
 to stderr; exit 0 means the program is free of lexical, syntactic, and semantic errors
-reported by the analyser.
+reported by the analyser. See [`examples/README.md`](examples/README.md) for a catalog
+of sample programs.
 
 ### Dumping IR
 
@@ -130,7 +131,7 @@ apollo-compiler/
     runtime/      Host-agnostic runtime pieces (later milestones)
     tools/        Command-line tools (apolloc)
   tests/
-  examples/
+  examples/       Sample Pascal programs (see examples/README.md)
 ```
 
 ## Relationship to Gemini

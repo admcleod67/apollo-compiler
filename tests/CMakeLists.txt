@@ -214,20 +214,31 @@ add_test(
 set_tests_properties(apolloc_ast_error PROPERTIES WILL_FAIL TRUE)
 
 add_test(
-    NAME apolloc_check_hello
-    COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/examples/hello.pas
-)
-
-add_test(
-    NAME apolloc_check_count
-    COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/examples/count.pas
-)
-
-add_test(
     NAME apolloc_check_error
     COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/tests/fixtures/check_error.pas
 )
 set_tests_properties(apolloc_check_error PROPERTIES WILL_FAIL TRUE)
+
+set(APOLLO_EXAMPLE_PROGRAMS
+    hello
+    count
+    arith
+    reals
+    arrays
+    subprograms
+    primes
+    sieve
+    readsum
+    ifelse
+    while
+    repeat
+)
+foreach(name IN LISTS APOLLO_EXAMPLE_PROGRAMS)
+    add_test(
+        NAME apolloc_check_${name}
+        COMMAND $<TARGET_FILE:apolloc> --check ${CMAKE_SOURCE_DIR}/examples/${name}.pas
+    )
+endforeach()
 
 add_test(
     NAME apolloc_ir_hello
@@ -258,6 +269,12 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --emit ${CMAKE_SOURCE_DIR}/examples/count.pas
 )
 set_tests_properties(apolloc_emit_count PROPERTIES PASS_REGULAR_EXPRESSION "main\\$for\\.head")
+
+add_test(
+    NAME apolloc_emit_primes
+    COMMAND $<TARGET_FILE:apolloc> --emit ${CMAKE_SOURCE_DIR}/examples/primes.pas
+)
+set_tests_properties(apolloc_emit_primes PROPERTIES PASS_REGULAR_EXPRESSION "CALL isPrime")
 
 add_test(
     NAME apolloc_emit_error
