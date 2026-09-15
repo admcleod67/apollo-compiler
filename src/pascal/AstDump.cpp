@@ -288,6 +288,40 @@ void dumpStmt(std::ostream &out, const ast::Stmt &stmt, int depth) {
             dumpStmt(out, *stmt.thenBranch, depth + 2);
         }
         break;
+    case ast::StmtKind::Case:
+        out << "CaseStmt\n";
+        if (stmt.condition) {
+            indent(out, depth + 1);
+            out << "Selector\n";
+            dumpExpr(out, *stmt.condition, depth + 2);
+        }
+        for (const auto &arm : stmt.caseArms) {
+            indent(out, depth + 1);
+            out << "Arm\n";
+            for (const auto &label : arm.labels) {
+                indent(out, depth + 2);
+                out << "Label\n";
+                if (label.lo) {
+                    dumpExpr(out, *label.lo, depth + 3);
+                }
+                if (label.hi) {
+                    indent(out, depth + 3);
+                    out << "To\n";
+                    dumpExpr(out, *label.hi, depth + 4);
+                }
+            }
+            if (arm.body) {
+                indent(out, depth + 2);
+                out << "Body\n";
+                dumpStmt(out, *arm.body, depth + 3);
+            }
+        }
+        if (stmt.elseBranch) {
+            indent(out, depth + 1);
+            out << "Else\n";
+            dumpStmt(out, *stmt.elseBranch, depth + 2);
+        }
+        break;
     }
 }
 

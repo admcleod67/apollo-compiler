@@ -270,6 +270,9 @@ straight-line compounds (no branching yet beyond what a call implies).
     head`; `head` reloads `control`, compares (`CmpLe`/`CmpGe` per `forDownto`) against
     `limit`, `BranchIf cond, body, end`; `body` lowers the loop statement, reloads
     `control`, `Add`/`Sub` by `1`, `StoreLocal`, `Branch head`; continue into `end`.
+  - `case` (M7 Stage 3): evaluate selector once; `case.test.i` builds a Bool match
+    (`CmpEq` / range via `CmpGe`∧`CmpLe`, `Or` across labels), `BranchIf` → `case.arm.i` or
+    next test / `else` / `merge`; each arm `Branch` → `case.merge`; optional `else`.
 - **Subprogram lowering:** a shared `lowerFunctionCore(symbols, diagnostics, name,
   returnType, params, block, resultName) -> ir::Function` is used for both `main` (`params =
   nullptr`, `resultName = nullopt`) and each top-level subprogram (`resultName` set iff

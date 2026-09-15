@@ -629,6 +629,62 @@ ast::Stmt parseStatement(TokenCursor &cursor) {
         return stmt;
     }
 
+    if (cursor.check(TokenKind::KeywordCase)) {
+        const Token &caseTok = cursor.current();
+        cursor.advance();
+        stmt.kind = ast::StmtKind::Case;
+        stmt.condition = parseExpression(cursor);
+        (void)cursor.expect(TokenKind::KeywordOf, "expected 'of' after case selector");
+
+        auto parseCaseLabel = [&]() -> ast::CaseLabel {
+            ast::CaseLabel label;
+            label.lo = parseExpression(cursor);
+            if (cursor.match(TokenKind::DotDot)) {
+                label.hi = parseExpression(cursor);
+            }
+            return label;
+        };
+
+        while (!cursor.check(TokenKind::KeywordEnd) && !cursor.check(TokenKind::KeywordElse) &&
+               !cursor.check(TokenKind::EndOfFile)) {
+            ast::CaseArm arm;
+            arm.labels.push_back(parseCaseLabel());
+            while (cursor.match(TokenKind::Comma)) {
+                arm.labels.push_back(parseCaseLabel());
+            }
+            (void)cursor.expect(TokenKind::Colon, "expected ':' after case label");
+            arm.body = std::make_unique<ast::Stmt>(parseStatement(cursor));
+            stmt.caseArms.push_back(std::move(arm));
+            if (cursor.check(TokenKind::KeywordEnd) || cursor.check(TokenKind::KeywordElse)) {
+                break;
+            }
+            if (cursor.match(TokenKind::Semicolon)) {
+                if (cursor.check(TokenKind::KeywordEnd) || cursor.check(TokenKind::KeywordElse)) {
+                    break;
+                }
+                continue;
+            }
+            // Allow next arm without semicolon when the next token starts a label.
+            if (cursor.check(TokenKind::KeywordEnd) || cursor.check(TokenKind::KeywordElse) ||
+                cursor.check(TokenKind::EndOfFile)) {
+                break;
+            }
+        }
+
+        if (stmt.caseArms.empty()) {
+            cursor.error("expected at least one case arm");
+        }
+
+        if (cursor.match(TokenKind::KeywordElse)) {
+            stmt.elseBranch = std::make_unique<ast::Stmt>(parseStatement(cursor));
+        }
+
+        const Token &endTok = cursor.current();
+        (void)cursor.expect(TokenKind::KeywordEnd, "expected 'end' after case statement");
+        stmt.range = spanRanges(caseTok.range, endTok.range);
+        return stmt;
+    }
+
     if (cursor.check(TokenKind::Identifier)) {
         const Token &nameTok = cursor.current();
         stmt.name = std::string(nameTok.lexeme);

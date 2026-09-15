@@ -372,5 +372,31 @@ int main() {
         }
     }
 
+    // case with multi-label, range, and else
+    {
+        ScanParse run("case.pas",
+                      "program P;\n"
+                      "var n: integer;\n"
+                      "begin\n"
+                      "  case n of\n"
+                      "    1, 2: writeln(1);\n"
+                      "    3..5: writeln(2);\n"
+                      "  else\n"
+                      "    writeln(0)\n"
+                      "  end\n"
+                      "end.\n");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("case fixture should parse");
+        }
+        const auto &stmt = run.program->block.body.statements[0];
+        if (stmt.kind != StmtKind::Case || !stmt.condition || stmt.caseArms.size() != 2 ||
+            !stmt.elseBranch) {
+            return fail("case AST shape mismatch");
+        }
+        if (stmt.caseArms[0].labels.size() != 2 || !stmt.caseArms[1].labels[0].hi) {
+            return fail("case label list / range mismatch");
+        }
+    }
+
     return 0;
 }

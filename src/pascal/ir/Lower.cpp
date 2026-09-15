@@ -1021,6 +1021,89 @@ void lowerFor(LowerCtx &ctx, const ast::Stmt &stmt) {
     beginBlock(ctx, endLabel);
 }
 
+irs::ValueId emitCaseLabelMatch(LowerCtx &ctx, irs::ValueId selector, const ast::CaseLabel &label) {
+    const irs::ValueId lo = label.lo ? lowerExpr(ctx, *label.lo) : emitConstI32(ctx, 0);
+    if (!label.hi) {
+        return emitBinaryOp(ctx, irs::Op::CmpEq, selector, lo, irs::IrType::Bool);
+    }
+    const irs::ValueId hi = lowerExpr(ctx, *label.hi);
+    const irs::ValueId ge = emitBinaryOp(ctx, irs::Op::CmpGe, selector, lo, irs::IrType::Bool);
+    const irs::ValueId le = emitBinaryOp(ctx, irs::Op::CmpLe, selector, hi, irs::IrType::Bool);
+    return emitBinaryOp(ctx, irs::Op::And, ge, le, irs::IrType::Bool);
+}
+
+irs::ValueId emitCaseArmMatch(LowerCtx &ctx, irs::ValueId selector, const ast::CaseArm &arm) {
+    if (arm.labels.empty()) {
+        return emitConstBool(ctx, false);
+    }
+    irs::ValueId match = emitCaseLabelMatch(ctx, selector, arm.labels.front());
+    for (std::size_t i = 1; i < arm.labels.size(); ++i) {
+        const irs::ValueId next = emitCaseLabelMatch(ctx, selector, arm.labels[i]);
+        match = emitBinaryOp(ctx, irs::Op::Or, match, next, irs::IrType::Bool);
+    }
+    return match;
+}
+
+void lowerCase(LowerCtx &ctx, const ast::Stmt &stmt) {
+    const irs::ValueId selector =
+        stmt.condition ? lowerExpr(ctx, *stmt.condition) : emitConstI32(ctx, 0);
+    const std::string mergeLabel = newLabel(ctx, "case.merge.");
+    const bool hasElse = static_cast<bool>(stmt.elseBranch);
+    const std::string elseLabel = hasElse ? newLabel(ctx, "case.else.") : std::string();
+
+    std::vector<std::string> testLabels;
+    std::vector<std::string> armLabels;
+    testLabels.reserve(stmt.caseArms.size());
+    armLabels.reserve(stmt.caseArms.size());
+    for (std::size_t i = 0; i < stmt.caseArms.size(); ++i) {
+        testLabels.push_back(newLabel(ctx, "case.test."));
+        armLabels.push_back(newLabel(ctx, "case.arm."));
+    }
+
+    if (stmt.caseArms.empty()) {
+        if (hasElse) {
+            sealBlock(ctx, branchTo(elseLabel));
+            beginBlock(ctx, elseLabel);
+            lowerStmt(ctx, *stmt.elseBranch);
+            sealBlock(ctx, branchTo(mergeLabel));
+            beginBlock(ctx, mergeLabel);
+        }
+        return;
+    }
+
+    sealBlock(ctx, branchTo(testLabels.front()));
+
+    for (std::size_t i = 0; i < stmt.caseArms.size(); ++i) {
+        beginBlock(ctx, testLabels[i]);
+        const irs::ValueId match = emitCaseArmMatch(ctx, selector, stmt.caseArms[i]);
+        std::string missTarget;
+        if (i + 1 < stmt.caseArms.size()) {
+            missTarget = testLabels[i + 1];
+        } else if (hasElse) {
+            missTarget = elseLabel;
+        } else {
+            missTarget = mergeLabel;
+        }
+        sealBlock(ctx, branchIfTo(match, armLabels[i], missTarget));
+    }
+
+    for (std::size_t i = 0; i < stmt.caseArms.size(); ++i) {
+        beginBlock(ctx, armLabels[i]);
+        if (stmt.caseArms[i].body) {
+            lowerStmt(ctx, *stmt.caseArms[i].body);
+        }
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    if (hasElse) {
+        beginBlock(ctx, elseLabel);
+        lowerStmt(ctx, *stmt.elseBranch);
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    beginBlock(ctx, mergeLabel);
+}
+
 void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
     switch (stmt.kind) {
     case ast::StmtKind::Compound:
@@ -1045,6 +1128,9 @@ void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
         break;
     case ast::StmtKind::For:
         lowerFor(ctx, stmt);
+        break;
+    case ast::StmtKind::Case:
+        lowerCase(ctx, stmt);
         break;
     }
 }

@@ -233,6 +233,7 @@ set(APOLLO_EXAMPLE_PROGRAMS
     while
     repeat
     point
+    case
 )
 foreach(name IN LISTS APOLLO_EXAMPLE_PROGRAMS)
     add_test(

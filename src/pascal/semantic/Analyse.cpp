@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -16,6 +17,10 @@ struct AnalyseCtx {
     SymbolTable &table;
     apollo::common::DiagnosticEngine &diagnostics;
     std::string currentFunction; // folded lower; empty outside a function body
+    /// True while analysing a procedure/function body (not the program block).
+    bool inSubprogram{false};
+    /// Folded names of params and locals declared in the current subprogram.
+    std::unordered_set<std::string> localNames;
 };
 
 char toLowerAscii(char c) {
@@ -551,6 +556,206 @@ void requireBooleanCondition(AnalyseCtx &ctx, ast::Expr *condition) {
     }
 }
 
+void diagnoseEnclosingLocal(AnalyseCtx &ctx, const Symbol &symbol,
+                            apollo::common::SourceLocation location) {
+    if (!ctx.inSubprogram) {
+        return;
+    }
+    if (symbol.kind != SymbolKind::Var && symbol.kind != SymbolKind::Param) {
+        return;
+    }
+    if (ctx.localNames.count(foldAsciiLower(symbol.name)) != 0) {
+        return;
+    }
+    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                           "accessing enclosing-scope locals is not supported ('" + symbol.name +
+                               "')");
+}
+
+char decodeCharLiteral(const std::string &raw) {
+    if (raw.size() >= 3 && raw.front() == '\'' && raw.back() == '\'') {
+        if (raw.size() == 3) {
+            return raw[1];
+        }
+        if (raw.size() == 4 && raw[1] == '\'' && raw[2] == '\'') {
+            return '\'';
+        }
+    }
+    return '\0';
+}
+
+/// Evaluate a case label constant to an ordinal integer (char code / bool 0|1 / int).
+std::optional<std::int64_t> evalCaseOrdinal(AnalyseCtx &ctx, const ast::Expr *expr,
+                                            TypeTag expected) {
+    if (!expr) {
+        return std::nullopt;
+    }
+    if (expr->kind == ast::ExprKind::Group) {
+        return evalCaseOrdinal(ctx, expr->left.get(), expected);
+    }
+    if (expr->kind == ast::ExprKind::Unary && expr->unaryOp == ast::UnaryOp::Minus &&
+        expr->left && expected == TypeTag::Integer) {
+        const auto inner = evalCaseOrdinal(ctx, expr->left.get(), expected);
+        if (!inner) {
+            return std::nullopt;
+        }
+        return -*inner;
+    }
+    if (expected == TypeTag::Integer) {
+        if (expr->kind == ast::ExprKind::IntegerLiteral) {
+            try {
+                return std::stoll(expr->text);
+            } catch (...) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       expr->range.begin, "invalid integer case label");
+                return std::nullopt;
+            }
+        }
+        if (expr->kind == ast::ExprKind::Identifier) {
+            const Symbol *found = ctx.table.lookup(expr->text);
+            if (found && found->kind == SymbolKind::Const && found->constExpr) {
+                return evalCaseOrdinal(ctx, found->constExpr, expected);
+            }
+        }
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                               "case label must be a constant integer");
+        return std::nullopt;
+    }
+    if (expected == TypeTag::Char) {
+        if (expr->kind == ast::ExprKind::CharLiteral) {
+            return static_cast<unsigned char>(decodeCharLiteral(expr->text));
+        }
+        if (expr->kind == ast::ExprKind::Identifier) {
+            const Symbol *found = ctx.table.lookup(expr->text);
+            if (found && found->kind == SymbolKind::Const && found->constExpr) {
+                return evalCaseOrdinal(ctx, found->constExpr, expected);
+            }
+        }
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                               "case label must be a constant character");
+        return std::nullopt;
+    }
+    if (expected == TypeTag::Boolean) {
+        if (expr->kind == ast::ExprKind::Identifier) {
+            const std::string folded = foldAsciiLower(expr->text);
+            if (folded == "true") {
+                return 1;
+            }
+            if (folded == "false") {
+                return 0;
+            }
+            const Symbol *found = ctx.table.lookup(expr->text);
+            if (found && found->kind == SymbolKind::Const && found->constExpr) {
+                return evalCaseOrdinal(ctx, found->constExpr, expected);
+            }
+        }
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr->range.begin,
+                               "case label must be true or false");
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
+bool labelTypeCompatible(TypeTag selector, TypeTag label) {
+    return selector == label;
+}
+
+void checkCase(AnalyseCtx &ctx, ast::Stmt &stmt) {
+    TypePtr selectorType = makeError();
+    if (stmt.condition) {
+        selectorType = typeExpr(ctx, *stmt.condition);
+    }
+    TypeTag selectorTag = TypeTag::Error;
+    if (!isError(selectorType)) {
+        selectorTag = canonicalTag(selectorType);
+        if (selectorTag != TypeTag::Integer && selectorTag != TypeTag::Char &&
+            selectorTag != TypeTag::Boolean) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   stmt.condition ? stmt.condition->range.begin
+                                                  : stmt.range.begin,
+                                   "case selector must be integer, char, or boolean");
+            selectorTag = TypeTag::Error;
+        }
+    }
+
+    struct Interval {
+        std::int64_t lo;
+        std::int64_t hi;
+        apollo::common::SourceLocation location;
+    };
+    std::vector<Interval> covered;
+
+    for (auto &arm : stmt.caseArms) {
+        for (auto &label : arm.labels) {
+            TypePtr loType = makeError();
+            if (label.lo) {
+                loType = typeExpr(ctx, *label.lo);
+            }
+            TypePtr hiType = makeError();
+            if (label.hi) {
+                hiType = typeExpr(ctx, *label.hi);
+                if (selectorTag == TypeTag::Boolean) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           label.hi->range.begin,
+                                           "boolean case labels cannot be ranges");
+                }
+            }
+            if (selectorTag != TypeTag::Error) {
+                if (!isError(loType) && !labelTypeCompatible(selectorTag, canonicalTag(loType))) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           label.lo ? label.lo->range.begin : stmt.range.begin,
+                                           "case label type does not match selector");
+                }
+                if (label.hi && !isError(hiType) &&
+                    !labelTypeCompatible(selectorTag, canonicalTag(hiType))) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           label.hi->range.begin,
+                                           "case label type does not match selector");
+                }
+            }
+
+            if (selectorTag == TypeTag::Error) {
+                continue;
+            }
+            const auto loVal = evalCaseOrdinal(ctx, label.lo.get(), selectorTag);
+            if (!loVal) {
+                continue;
+            }
+            std::int64_t hiVal = *loVal;
+            if (label.hi) {
+                const auto hi = evalCaseOrdinal(ctx, label.hi.get(), selectorTag);
+                if (!hi) {
+                    continue;
+                }
+                hiVal = *hi;
+                if (*loVal > hiVal) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           label.lo ? label.lo->range.begin : stmt.range.begin,
+                                           "case label range lower bound exceeds upper bound");
+                    continue;
+                }
+            }
+            const apollo::common::SourceLocation loc =
+                label.lo ? label.lo->range.begin : stmt.range.begin;
+            for (const Interval &prior : covered) {
+                if (*loVal <= prior.hi && prior.lo <= hiVal) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, loc,
+                                           "overlapping case labels");
+                    break;
+                }
+            }
+            covered.push_back(Interval{*loVal, hiVal, loc});
+        }
+        if (arm.body) {
+            checkStmt(ctx, *arm.body);
+        }
+    }
+
+    if (stmt.elseBranch) {
+        checkStmt(ctx, *stmt.elseBranch);
+    }
+}
+
 TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
     TypePtr result = makeError();
 
@@ -579,8 +784,11 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
         }
         switch (found->kind) {
         case SymbolKind::Const:
+            result = found->type ? found->type : makeError();
+            break;
         case SymbolKind::Var:
         case SymbolKind::Param:
+            diagnoseEnclosingLocal(ctx, *found, expr.range.begin);
             result = found->type ? found->type : makeError();
             break;
         case SymbolKind::Function: {
@@ -712,6 +920,7 @@ void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
 
     TypePtr destType;
     if (lhs->kind == SymbolKind::Var || lhs->kind == SymbolKind::Param) {
+        diagnoseEnclosingLocal(ctx, *lhs, stmt.range.begin);
         destType = lhs->type;
     } else if (lhs->kind == SymbolKind::Function &&
                foldAsciiLower(lhs->name) == ctx.currentFunction) {
@@ -878,6 +1087,9 @@ void checkStmt(AnalyseCtx &ctx, ast::Stmt &stmt) {
     case ast::StmtKind::For:
         checkFor(ctx, stmt);
         break;
+    case ast::StmtKind::Case:
+        checkCase(ctx, stmt);
+        break;
     }
 }
 
@@ -930,13 +1142,35 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
                 subSym->paramIsVar.push_back(param.isVar);
             }
         }
-        for (const auto &name : param.names) {
+    for (const auto &name : param.names) {
             (void)ctx.table.declare(SymbolKind::Param, name, param.range.begin, paramType,
                                     param.isVar);
         }
     }
 
     const std::string previousFunction = ctx.currentFunction;
+    const bool previousInSubprogram = ctx.inSubprogram;
+    auto previousLocals = std::move(ctx.localNames);
+    ctx.localNames.clear();
+    ctx.inSubprogram = true;
+
+    for (const auto &param : sub.params) {
+        for (const auto &name : param.names) {
+            ctx.localNames.insert(foldAsciiLower(name));
+        }
+    }
+    if (sub.block) {
+        for (const auto &decl : sub.block->vars) {
+            for (const auto &name : decl.names) {
+                ctx.localNames.insert(foldAsciiLower(name));
+            }
+        }
+        if (!sub.block->subprograms.empty()) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, sub.range.begin,
+                                   "nested subprograms are not supported");
+        }
+    }
+
     if (sub.isFunction) {
         ctx.currentFunction = foldAsciiLower(sub.name);
     }
@@ -944,6 +1178,8 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
         walkBlock(ctx, *sub.block);
     }
     ctx.currentFunction = previousFunction;
+    ctx.inSubprogram = previousInSubprogram;
+    ctx.localNames = std::move(previousLocals);
     ctx.table.popScope();
 }
 

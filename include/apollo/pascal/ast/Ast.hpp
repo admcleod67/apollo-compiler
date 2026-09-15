@@ -138,6 +138,25 @@ enum class StmtKind {
     While,
     Repeat,
     For,
+    Case,
+};
+
+struct Stmt;
+
+struct CaseLabel {
+    std::unique_ptr<Expr> lo;
+    /// When set, this label is the closed range `lo .. hi`.
+    std::unique_ptr<Expr> hi;
+};
+
+struct CaseArm {
+    std::vector<CaseLabel> labels;
+    std::unique_ptr<Stmt> body;
+
+    CaseArm();
+    CaseArm(CaseArm &&) noexcept;
+    CaseArm &operator=(CaseArm &&) noexcept;
+    ~CaseArm();
 };
 
 struct Stmt {
@@ -157,7 +176,14 @@ struct Stmt {
     std::unique_ptr<Stmt> elseBranch;
     std::unique_ptr<Expr> forLimit;
     bool forDownto{false};
+    /// Case arms when `kind == Case`; selector is `condition`.
+    std::vector<CaseArm> caseArms;
 };
+
+inline CaseArm::CaseArm() = default;
+inline CaseArm::CaseArm(CaseArm &&) noexcept = default;
+inline CaseArm &CaseArm::operator=(CaseArm &&) noexcept = default;
+inline CaseArm::~CaseArm() = default;
 
 struct CompoundStmt {
     apollo::common::SourceRange range{};

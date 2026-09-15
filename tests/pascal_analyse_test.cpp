@@ -416,5 +416,98 @@ int main() {
         }
     }
 
+    // Integer case with labels, range, and else.
+    {
+        ScanAnalyse run("caseok.pas",
+                        "program P;\n"
+                        "var n: integer;\n"
+                        "begin\n"
+                        "  case n of\n"
+                        "    1, 2: n := 1;\n"
+                        "    3..5: n := 2;\n"
+                        "  else n := 0\n"
+                        "  end\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("integer case should be clean");
+        }
+    }
+
+    // Char and boolean case selectors.
+    {
+        ScanAnalyse run("casechar.pas",
+                        "program P;\n"
+                        "var c: char; b: boolean; n: integer;\n"
+                        "begin\n"
+                        "  case c of\n"
+                        "    'a'..'c': n := 1;\n"
+                        "    'z': n := 2\n"
+                        "  end;\n"
+                        "  case b of\n"
+                        "    true: n := 1;\n"
+                        "    false: n := 0\n"
+                        "  end\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("char/boolean case should be clean");
+        }
+    }
+
+    // Non-ordinal selector and overlapping labels.
+    {
+        ScanAnalyse run("casebad.pas",
+                        "program P;\n"
+                        "var x: real; n: integer;\n"
+                        "begin\n"
+                        "  case x of 1: n := 1 end\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("real case selector should diagnose");
+        }
+        ScanAnalyse overlap("caseoverlap.pas",
+                            "program P;\n"
+                            "var n: integer;\n"
+                            "begin\n"
+                            "  case n of\n"
+                            "    1..3: n := 1;\n"
+                            "    2: n := 2\n"
+                            "  end\n"
+                            "end.\n");
+        if (overlap.diagnostics.errorCount() == 0) {
+            return fail("overlapping case labels should diagnose");
+        }
+    }
+
+    // Enclosing-scope locals diagnosed at analyse time.
+    {
+        ScanAnalyse run("outerscope.pas",
+                        "program HasOuterAccess;\n"
+                        "var total: integer;\n"
+                        "procedure Bad;\n"
+                        "begin\n"
+                        "  total := total + 1;\n"
+                        "end;\n"
+                        "begin\n"
+                        "  Bad;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("enclosing-scope access should diagnose at analyse");
+        }
+    }
+
+    // Nested subprograms diagnosed at analyse time.
+    {
+        ScanAnalyse run("nested.pas",
+                        "program P;\n"
+                        "procedure Outer;\n"
+                        "  procedure Inner;\n"
+                        "  begin end;\n"
+                        "begin end;\n"
+                        "begin end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("nested subprogram should diagnose at analyse");
+        }
+    }
+
     return 0;
 }

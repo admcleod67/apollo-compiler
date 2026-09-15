@@ -504,5 +504,28 @@ int main() {
         }
     }
 
+    // Case lowers to compare / branch chain.
+    {
+        ScanAnalyseLowerEmit run("caseemit.pas",
+                                 "program CaseEmit;\n"
+                                 "var\n"
+                                 "  n: integer;\n"
+                                 "begin\n"
+                                 "  n := 2;\n"
+                                 "  case n of\n"
+                                 "    1: writeln(1);\n"
+                                 "    2..4: writeln(2);\n"
+                                 "  else\n"
+                                 "    writeln(0)\n"
+                                 "  end\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("case emit should succeed");
+        }
+        if (!contains(run.tbc, "EQ") || !contains(run.tbc, "JZ") || !contains(run.tbc, "JUMP")) {
+            return fail("case should emit compare and branch opcodes");
+        }
+    }
+
     return 0;
 }

@@ -278,5 +278,25 @@ int main() {
         }
     }
 
+    // Case lowers to labeled test/arm/merge blocks.
+    {
+        ScanAnalyseLower run("caselower.pas",
+                             "program CaseLower;\n"
+                             "var n: integer;\n"
+                             "begin\n"
+                             "  case n of\n"
+                             "    1: n := 1;\n"
+                             "    2: n := 2\n"
+                             "  end\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("case should lower cleanly");
+        }
+        if (!contains(run.dump, "case.test.") || !contains(run.dump, "case.arm.") ||
+            !contains(run.dump, "case.merge.")) {
+            return fail("case IR dump missing test/arm/merge labels");
+        }
+    }
+
     return 0;
 }

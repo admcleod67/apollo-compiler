@@ -283,6 +283,26 @@ parameters; record or array function results; `file of record`.
 - Nested subprograms: shallow up-level locals or a frozen “top-level only” diagnostic
   policy documented in Stage notes.
 
+**Case notes (pinned):**
+
+- Selector types: `integer`, `char`, `boolean`. Reject `real`, string, arrays, records.
+- Labels: constants (literals or named consts), comma lists, and `lo..hi` ranges (not for
+  boolean). Overlapping labels are diagnosed.
+- Optional `else`; **no fall-through** between arms; no match and no else continues after
+  `end`.
+- Lowering: evaluate the selector once, then a linear `CmpEq` / range (`CmpGe`∧`CmpLe`)
+  compare chain with `BranchIf` into arm blocks and a shared `case.merge` (no jump table).
+
+**Nesting policy (frozen):**
+
+- Only procedures/functions declared in the **program block** lower to IR functions.
+- Nested subprograms inside a subprogram are diagnosed at analyse time.
+- Access to enclosing-scope `var`/`param` from a subprogram is diagnosed at analyse
+  (and still at lower if reached). No activation records or `main$` capture in Stage 3.
+- Historical IR notes: [04-intermediate-representation.md](04-intermediate-representation.md).
+
+**Status:** completed.
+
 ### Stage 4 — `{$I}` and dialect close-out (M7d)
 
 **Objective:** Multi-file sources without units; freeze the supported dialect.
@@ -304,7 +324,7 @@ parameters; record or array function results; `file of record`.
 - [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
 - [x] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
 - [x] Flat `record` field access emits and runs.
-- [ ] `case` on ordinal types emits and runs.
+- [x] `case` on ordinal types emits and runs.
 - [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
 - [ ] README documents the supported Wirth console / Pascal80-style dialect and explicit
   non-goals (units, files, pointers, sets, …).
@@ -319,7 +339,7 @@ parameters; record or array function results; `file of record`.
 |-------|--------|
 | Stage 1 — Scalar / array debt | completed |
 | Stage 2 — Records | completed |
-| Stage 3 — `case` + nesting | not started |
+| Stage 3 — `case` + nesting | completed |
 | Stage 4 — `{$I}` + dialect close-out | not started |
 
 ---
