@@ -91,58 +91,6 @@ irs::IrType toIrType(const TypePtr &type) {
     return irs::IrType::Error;
 }
 
-/// Re-resolve a param/local `TypeDenoter` fresh at lowering time.
-///
-/// `SymbolTable` pops each subprogram's scope once `analyse()` returns, so a subprogram's
-/// own params/locals are no longer queryable there. Predefined types (`integer`, ...) and
-/// program-level `type` aliases still live in the retained top-level scope, so re-resolving
-/// the denoter via `symbols.lookup()` works for the common case. Falls back to `Error`
-/// (silently — `--check` already validated the source) for anything not found, e.g. a
-/// subprogram-local `type` declaration, which is not resolvable post-analyse either.
-TypePtr resolveTypeDenoter(const SymbolTable &symbols, const ast::TypeDenoter &denoter) {
-    if (denoter.kind == ast::TypeKind::Array) {
-        if (!denoter.element) {
-            return makeError();
-        }
-        // Bounds were validated in analyse; re-parse literals/const refs for IR metadata.
-        std::int64_t low = 1;
-        std::int64_t high = 1;
-        auto evalBound = [&](const ast::Expr *expr, std::int64_t &out) {
-            if (!expr) {
-                return;
-            }
-            if (expr->kind == ast::ExprKind::IntegerLiteral) {
-                try {
-                    out = std::stoll(expr->text);
-                } catch (...) {
-                }
-                return;
-            }
-            if (expr->kind == ast::ExprKind::Identifier) {
-                const Symbol *sym = symbols.lookup(expr->text);
-                if (sym && sym->kind == SymbolKind::Const && sym->constExpr &&
-                    sym->constExpr->kind == ast::ExprKind::IntegerLiteral) {
-                    try {
-                        out = std::stoll(sym->constExpr->text);
-                    } catch (...) {
-                    }
-                }
-            }
-        };
-        evalBound(denoter.indexLow.get(), low);
-        evalBound(denoter.indexHigh.get(), high);
-        return makeArray(resolveTypeDenoter(symbols, *denoter.element), low, high);
-    }
-    if (denoter.name.empty()) {
-        return makeError();
-    }
-    const Symbol *found = symbols.lookup(denoter.name);
-    if (!found || found->kind != SymbolKind::Type || !found->type) {
-        return makeError();
-    }
-    return found->type;
-}
-
 void fillArrayMeta(irs::Local &local, const TypePtr &type) {
     TypePtr peeled = type;
     while (peeled && peeled->tag == TypeTag::Alias) {
@@ -188,6 +136,21 @@ struct LowerCtx {
     /// Value last assigned to `functionResultName`; flows into the final `Return`.
     irs::ValueId resultValue{};
 };
+
+/// Type a param/local declaration from the annotation `analyse()` left on the denoter.
+///
+/// Re-resolving here is not an option: `SymbolTable` pops each subprogram's scope once
+/// `analyse()` returns, so its params, locals and local `type` declarations are gone. A
+/// missing annotation means lowering ran on an unanalysed AST, which is a bug rather than
+/// a source error — `lowerToIr` only runs after analyse reports zero errors.
+TypePtr denoterType(LowerCtx &ctx, const ast::TypeDenoter &denoter) {
+    if (!denoter.resolved) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, denoter.range.begin,
+                               "IR lowering: type denoter was not resolved by analyse");
+        return makeError();
+    }
+    return denoter.resolved;
+}
 
 irs::Operand makeValueOperand(irs::ValueId value) {
     irs::Operand operand;
@@ -849,7 +812,7 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
         ctx.constExprs.emplace(foldAsciiLower(decl.name), decl.value.get());
     }
     for (const auto &decl : block.vars) {
-        const TypePtr localType = resolveTypeDenoter(ctx.symbols, decl.type);
+        const TypePtr localType = denoterType(ctx, decl.type);
         const irs::IrType irLocalType = toIrType(localType);
         for (const auto &name : decl.names) {
             const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
@@ -869,6 +832,9 @@ void emitArrayDims(LowerCtx &ctx) {
         }
         const std::int64_t size = *local.arrayHigh - *local.arrayLow + 1;
         if (size < 1) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   apollo::common::SourceLocation{},
+                                   "IR lowering: array '" + local.name + "' has an empty range");
             continue;
         }
         emitDimArray(ctx, makeLocalOperand(i), size, local.arrayElement);
@@ -890,7 +856,7 @@ irs::Function lowerFunctionCore(const SymbolTable &symbols,
 
     if (params) {
         for (const auto &param : *params) {
-            const TypePtr paramType = resolveTypeDenoter(symbols, param.type);
+            const TypePtr paramType = denoterType(ctx, param.type);
             const irs::IrType irParamType = toIrType(paramType);
             for (const auto &name : param.names) {
                 const auto slot = static_cast<std::uint32_t>(function.params.size());

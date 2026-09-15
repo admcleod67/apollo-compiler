@@ -40,7 +40,7 @@ void checkCall(AnalyseCtx &ctx, std::string_view name,
                apollo::common::SourceLocation location, bool asExpression);
 void checkStmt(AnalyseCtx &ctx, ast::Stmt &stmt);
 
-TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
+TypePtr resolveDenoter(SymbolTable &table, ast::TypeDenoter &denoter,
                        apollo::common::DiagnosticEngine &diagnostics);
 
 bool isNumeric(TypeTag tag) {
@@ -151,8 +151,8 @@ std::optional<std::int64_t> evalConstInt(SymbolTable &table, const ast::Expr *ex
     return std::nullopt;
 }
 
-TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
-                       apollo::common::DiagnosticEngine &diagnostics) {
+TypePtr resolveDenoterImpl(SymbolTable &table, ast::TypeDenoter &denoter,
+                           apollo::common::DiagnosticEngine &diagnostics) {
     if (denoter.kind == ast::TypeKind::Array) {
         if (!denoter.element) {
             return makeError();
@@ -165,6 +165,14 @@ TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
         if (*low > *high) {
             diagnostics.report(apollo::common::DiagnosticSeverity::Error, denoter.range.begin,
                                "array lower bound exceeds upper bound");
+            return makeError();
+        }
+        // Gemini stores indices and array sizes in a 32-bit int.
+        constexpr auto kVmIntMin = static_cast<std::int64_t>(INT32_MIN);
+        constexpr auto kVmIntMax = static_cast<std::int64_t>(INT32_MAX);
+        if (*low < kVmIntMin || *high > kVmIntMax || (*high - *low + 1) > kVmIntMax) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error, denoter.range.begin,
+                               "array bounds exceed the target VM's 32-bit integer range");
             return makeError();
         }
         return makeArray(resolveDenoter(table, *denoter.element, diagnostics), *low, *high);
@@ -181,6 +189,17 @@ TypePtr resolveDenoter(SymbolTable &table, const ast::TypeDenoter &denoter,
         return makeError();
     }
     return found->type;
+}
+
+/// Resolve `denoter` and record the result on the node.
+///
+/// IR lowering reads `TypeDenoter::resolved` instead of re-resolving: each subprogram's
+/// scope is popped once `analyse()` returns, so its params, locals and local `type`
+/// declarations are no longer reachable through `SymbolTable`.
+TypePtr resolveDenoter(SymbolTable &table, ast::TypeDenoter &denoter,
+                       apollo::common::DiagnosticEngine &diagnostics) {
+    denoter.resolved = resolveDenoterImpl(table, denoter, diagnostics);
+    return denoter.resolved;
 }
 
 TypePtr typeBinary(ast::BinaryOp op, const TypePtr &left, const TypePtr &right,
@@ -716,6 +735,11 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
         } else {
             returnType = makeError();
         }
+        if (canonicalTag(returnType) == TypeTag::Array) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   sub.returnType->range.begin,
+                                   "function result type must be a simple type");
+        }
     }
 
     const SymbolKind kind = sub.isFunction ? SymbolKind::Function : SymbolKind::Procedure;
@@ -724,8 +748,16 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
     Symbol *subSym = declared ? ctx.table.lookupMutable(sub.name) : nullptr;
 
     ctx.table.pushScope();
-    for (const auto &param : sub.params) {
+    for (auto &param : sub.params) {
         TypePtr paramType = resolveDenoter(ctx.table, param.type, ctx.diagnostics);
+        // Gemini keeps arrays in a separate store from scalars, so passing one through a
+        // param slot would emit a LOAD_VAR of a name that holds no value. Stage 2 adds
+        // real support via MAT_COPY; until then the param is still declared so the body
+        // does not cascade "undeclared identifier".
+        if (canonicalTag(paramType) == TypeTag::Array) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, param.range.begin,
+                                   "array parameters not supported yet");
+        }
         if (subSym) {
             for (std::size_t i = 0; i < param.names.size(); ++i) {
                 subSym->paramTypes.push_back(paramType);
@@ -758,12 +790,12 @@ void walkBlock(AnalyseCtx &ctx, ast::Block &block) {
             }
         }
     }
-    for (const auto &decl : block.types) {
+    for (auto &decl : block.types) {
         TypePtr underlying = resolveDenoter(ctx.table, decl.type, ctx.diagnostics);
         TypePtr alias = makeAlias(decl.name, std::move(underlying));
         (void)ctx.table.declare(SymbolKind::Type, decl.name, decl.range.begin, std::move(alias));
     }
-    for (const auto &decl : block.vars) {
+    for (auto &decl : block.vars) {
         TypePtr type = resolveDenoter(ctx.table, decl.type, ctx.diagnostics);
         for (const auto &name : decl.names) {
             (void)ctx.table.declare(SymbolKind::Var, name, decl.range.begin, type);

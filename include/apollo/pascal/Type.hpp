@@ -29,7 +29,8 @@ struct Type {
     std::string name;
     std::shared_ptr<Type> canonical; // Alias → underlying
     std::shared_ptr<Type> element;   // Array element
-    /// Const index bounds for Array (Pascal `[lo..hi]`).
+    /// Const index bounds for Array (Pascal `[lo..hi]`), evaluated by semantic analyse,
+    /// which is the only producer of Array types — so `hasBounds` is never a guess.
     std::int64_t indexLow{0};
     std::int64_t indexHigh{0};
     bool hasBounds{false};

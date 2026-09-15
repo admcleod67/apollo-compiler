@@ -231,5 +231,109 @@ int main() {
         }
     }
 
+    // Negative lower bound sizes the array from the range, not from a default.
+    {
+        ScanAnalyseLowerEmit run("arrneg.pas",
+                                 "program ArrNeg;\n"
+                                 "var\n"
+                                 "  a: array [-3..3] of integer;\n"
+                                 "begin\n"
+                                 "  a[-3] := 7;\n"
+                                 "  writeln(a[-3]);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("array [-3..3] should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_INT 7\n    DIM_ARRAY main$a")) {
+            return fail("array [-3..3] should DIM 7 elements");
+        }
+        if (!contains(run.tbc, "PUSH_INT -3\n    SUB")) {
+            return fail("array [-3..3] index remap should subtract the -3 low bound");
+        }
+    }
+
+    // Parenthesised bound.
+    {
+        ScanAnalyseLowerEmit run("arrgroup.pas",
+                                 "program ArrGroup;\n"
+                                 "var\n"
+                                 "  a: array [1..(4)] of integer;\n"
+                                 "begin\n"
+                                 "  a[4] := 1;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("array [1..(4)] should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_INT 4\n    DIM_ARRAY main$a")) {
+            return fail("array [1..(4)] should DIM 4 elements");
+        }
+    }
+
+    // Program-level const bound.
+    {
+        ScanAnalyseLowerEmit run("arrconst.pas",
+                                 "program ArrConst;\n"
+                                 "const\n"
+                                 "  n = 4;\n"
+                                 "var\n"
+                                 "  a: array [1..n] of integer;\n"
+                                 "begin\n"
+                                 "  a[4] := 1;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("const array bound should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_INT 4\n    DIM_ARRAY main$a")) {
+            return fail("const array bound should DIM 4 elements");
+        }
+    }
+
+    // Const bound declared inside a subprogram: its scope is gone by lowering time.
+    {
+        ScanAnalyseLowerEmit run("arrlocalconst.pas",
+                                 "program ArrLocalConst;\n"
+                                 "procedure p;\n"
+                                 "const\n"
+                                 "  n = 5;\n"
+                                 "var\n"
+                                 "  a: array [1..n] of integer;\n"
+                                 "begin\n"
+                                 "  a[5] := 3;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  p;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("subprogram-local const bound should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_INT 5\n    DIM_ARRAY p$a")) {
+            return fail("subprogram-local const bound should DIM 5 elements");
+        }
+    }
+
+    // Subprogram-local type alias: also unresolvable post-analyse without the annotation.
+    {
+        ScanAnalyseLowerEmit run("localalias.pas",
+                                 "program LocalAlias;\n"
+                                 "procedure p;\n"
+                                 "type\n"
+                                 "  ti = integer;\n"
+                                 "var\n"
+                                 "  x: ti;\n"
+                                 "begin\n"
+                                 "  readln(x);\n"
+                                 "  writeln(x);\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  p;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("subprogram-local type alias should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "INPUT_INT")) {
+            return fail("subprogram-local alias local should read as integer");
+        }
+    }
+
     return 0;
 }

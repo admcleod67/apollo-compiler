@@ -79,6 +79,8 @@ struct TypeDenoter {
     std::unique_ptr<Expr> indexLow;
     std::unique_ptr<Expr> indexHigh;
     std::unique_ptr<TypeDenoter> element;
+    /// Filled by semantic analyse; null until then.
+    apollo::pascal::TypePtr resolved;
 };
 
 struct ConstDecl {

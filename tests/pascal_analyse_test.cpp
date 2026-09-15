@@ -304,5 +304,53 @@ int main() {
         }
     }
 
+    // Array bound beyond the VM's 32-bit integer range.
+    {
+        ScanAnalyse run("arraybig.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  a: array [1..3000000000] of integer;\n"
+                        "begin\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("out-of-range array bound should diagnose");
+        }
+    }
+
+    // Array parameters wait on Stage 2 (Gemini keeps arrays outside the scalar store).
+    {
+        ScanAnalyse run("arrayparam.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  t = array [1..3] of integer;\n"
+                        "var\n"
+                        "  arr: t;\n"
+                        "procedure q(v: t);\n"
+                        "begin\n"
+                        "end;\n"
+                        "begin\n"
+                        "  q(arr);\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("array parameter should diagnose until supported");
+        }
+    }
+
+    // Array function results are not a simple type.
+    {
+        ScanAnalyse run("arrayresult.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  t = array [1..3] of integer;\n"
+                        "function f: t;\n"
+                        "begin\n"
+                        "end;\n"
+                        "begin\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("array function result should diagnose");
+        }
+    }
+
     return 0;
 }

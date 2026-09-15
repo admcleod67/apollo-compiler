@@ -53,7 +53,7 @@ Major Wirth gaps (not yet end-to-end):
 
 | Area | Status |
 |------|--------|
-| Array **indexing** `a[i]` | Stage 1: runs for plain literal bounds; follow-up **1a** open |
+| Array **indexing** `a[i]` | Stage 1 + **1a**: all const bound forms; array params diagnosed |
 | `real` / `mod` through emit | Stage 1: `PUSH_FLT` / mod sequence; follow-up **1b** open |
 | `record` / field select | Keywords reserved; not in grammar |
 | `case` | Keyword reserved; not in grammar |
@@ -132,7 +132,7 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
   widens before real division (follow-up **1b**).
 - [x] Integer `mod` emits without a language module.
 - [x] Indexed array load/store emit `DIM_ARRAY` / `LOAD_ARR` / `STORE_ARR`.
-- [ ] Every accepted array bound form lowers correctly (follow-up **1a**).
+- [x] Every accepted array bound form lowers correctly (follow-up **1a**).
 - [x] Stage fixtures pass under `ctest`.
 
 **Stage 1 notes**
@@ -155,10 +155,10 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
   an error). Turbo compatibility is the intended choice for this dialect.
 - Array bounds checking comes from the VM, which reports mangled slot names
   (`Array index out of bounds: MAIN$A`). Apollo emits no range check of its own.
-- Nothing validates that bounds or element counts fit the VM's 32-bit `int`; oversized
-  `PUSH_INT` operands fail at `.tbc` load time (see follow-up **1a**).
+- Bounds and element counts must fit the VM's 32-bit `int`; analyse diagnoses anything
+  wider rather than letting an oversized `PUSH_INT` fail at `.tbc` load time (**1a**).
 
-**Stage 1 review findings (open follow-ups)**
+**Stage 1 review findings**
 
 A post-implementation review (diff read plus `apolloc --emit` runs piped through
 `gemini-vm`) confirmed the happy path — `array [1..5]` filled and summed in a `for` loop
@@ -176,18 +176,24 @@ Contributing design weakness: `makeArray` sets `hasBounds` unconditionally, so t
 cannot distinguish *resolved* bounds from *guessed* ones — which is what let D1 pass
 silently.
 
-Follow-ups land as three separate plans, each independently green and mergeable.
+Follow-ups land as three separate plans, each independently green and mergeable. D1 is
+fixed and D4 is diagnosed as of **1a**; D2 and D3 remain open in **1b**.
 
-**1a — Array bound plumbing (D1, D4)**
+**1a — Array bound plumbing (D1, D4) — completed**
 
-- Carry the analysed bounds forward to lowering (resolved type, or bounds recorded on
-  `ast::TypeDenoter`) instead of re-deriving them; treat missing bounds as a hard internal
-  error rather than a `1..1` default.
-- Consider replacing `Type::hasBounds` with optional bounds so the type cannot express a
-  guess.
-- Diagnose array-typed parameters until real support lands in Stage 2.
-- Tests: negative low bound, parenthesised bound, const-named bound, and a bound declared
-  inside a procedure.
+- `analyse()` records each resolved type on `ast::TypeDenoter::resolved` (mirroring
+  `Expr::type`), and lowering reads that annotation. `Lower`'s duplicate denoter resolver
+  is gone, so a bound can no longer be guessed; a missing annotation is reported as an
+  internal error instead of defaulting to `1..1`.
+- Removing that resolver also fixes a second silent hazard it caused: a subprogram-local
+  `type` alias used to lower to `IrType::Error`, which made `readln` on such a local fail
+  in codegen.
+- Because analyse is now the only producer of array `Type`s, `hasBounds` is honest by
+  construction and needs no `std::optional` refactor.
+- Bounds are validated against the VM's 32-bit `int` range, and array-typed parameters and
+  function results are diagnosed until Stage 2 implements them.
+- Tests: negative low bound, parenthesised bound, program-level and subprogram-local const
+  bounds, subprogram-local type alias, plus the three new diagnostics.
 
 **1b — Real numerics (D2, D3)**
 
@@ -214,7 +220,7 @@ Follow-ups land as three separate plans, each independently green and mergeable.
 nearly every emitted array sequence, so goldens added before the semantics settle would be
 rewritten twice.
 
-**Status:** completed — follow-ups **1a**–**1c** open.
+**Status:** completed — **1a** landed; follow-ups **1b** and **1c** open.
 
 ### Stage 2 — Records (M7b)
 
@@ -251,7 +257,7 @@ rewritten twice.
 ## Success criteria (draft)
 
 - [x] Array indexing programs with plain integer-literal bounds emit and run on `gemini-vm`.
-- [ ] Array indexing is correct for every accepted bound form, and array parameters are
+- [x] Array indexing is correct for every accepted bound form, and array parameters are
   either supported or diagnosed (Stage 1 follow-up **1a**).
 - [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
 - [ ] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
@@ -269,7 +275,7 @@ rewritten twice.
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Scalar / array debt | completed; follow-ups 1a–1c open |
+| Stage 1 — Scalar / array debt | completed; 1a landed, 1b–1c open |
 | Stage 2 — Records | not started |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |
