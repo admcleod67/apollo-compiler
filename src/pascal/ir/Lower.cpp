@@ -285,7 +285,6 @@ void emitStore(LowerCtx &ctx, irs::Operand dest, irs::ValueId value) {
     irs::Instr instr;
     instr.op = irs::Op::StoreLocal;
     instr.type = irs::IrType::Void;
-    instr.result = ctx.function.newTemp();
     instr.a = dest;
     instr.b = makeValueOperand(value);
     ctx.block.body.push_back(std::move(instr));
@@ -295,7 +294,6 @@ void emitDimArray(LowerCtx &ctx, irs::Operand dest, std::int64_t size, irs::IrTy
     irs::Instr instr;
     instr.op = irs::Op::DimArray;
     instr.type = element;
-    instr.result = ctx.function.newTemp();
     instr.a = dest;
     instr.i64 = size;
     ctx.block.body.push_back(std::move(instr));
@@ -319,7 +317,6 @@ void emitStoreIndex(LowerCtx &ctx, irs::Operand arraySlot, irs::ValueId index,
     irs::Instr instr;
     instr.op = irs::Op::StoreIndex;
     instr.type = irs::IrType::Void;
-    instr.result = ctx.function.newTemp();
     instr.a = arraySlot;
     instr.b = makeValueOperand(value);
     instr.args.push_back(index);
@@ -418,7 +415,9 @@ irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
     irs::Instr call;
     call.op = irs::Op::Call;
     call.type = resultType;
-    call.result = ctx.function.newTemp();
+    if (resultType != irs::IrType::Void) {
+        call.result = ctx.function.newTemp();
+    }
     call.text = calleeName;
     call.args = std::move(args);
     const irs::ValueId result = call.result;
@@ -642,7 +641,6 @@ void lowerWriteCall(LowerCtx &ctx, const std::string &foldedName,
     irs::Instr call;
     call.op = irs::Op::CallRuntime;
     call.type = irs::IrType::Void;
-    call.result = ctx.function.newTemp();
     call.text = foldedName;
     call.args = std::move(argValues);
     ctx.block.body.push_back(std::move(call));

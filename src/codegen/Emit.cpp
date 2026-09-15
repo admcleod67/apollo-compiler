@@ -5,10 +5,10 @@
 #include "apollo/common/SourceLocation.hpp"
 
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_set>
-#include <sstream>
 #include <utility>
 
 namespace apollo::codegen {
@@ -193,46 +193,42 @@ std::optional<std::int64_t> arrayLowBound(const irs::Function &function, const i
     return std::nullopt;
 }
 
-irs::IrType arrayElementType(const irs::Function &function, const irs::Operand &operand) {
-    if (operand.kind == irs::OperandKind::Local && operand.slot < function.locals.size()) {
-        return function.locals[operand.slot].arrayElement;
-    }
-    if (operand.kind == irs::OperandKind::Param && operand.slot < function.params.size()) {
-        return function.params[operand.slot].arrayElement;
-    }
-    return irs::IrType::Error;
-}
-
 void emitMod(EmitCtx &ctx, irs::ValueId left, irs::ValueId right, irs::ValueId result) {
-    // a - (a div b) * b using Gemini DIV (toward zero).
+    // a - (a div b) * b on the stack, using Gemini DIV (toward zero).
     spillStackTop(ctx);
     if (ctx.spilled.count(left.id) == 0 || ctx.spilled.count(right.id) == 0) {
         ctx.fail("codegen: mod operands unavailable");
         return;
     }
-    const std::string quot = mangleTemp(ctx.function.name, result) + "$quot";
-    const std::string prod = mangleTemp(ctx.function.name, result) + "$prod";
-    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, left));
-    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, right));
+    const std::string a = mangleTemp(ctx.function.name, left);
+    const std::string b = mangleTemp(ctx.function.name, right);
+    ctx.writer.op("LOAD_VAR", a);
+    ctx.writer.op("LOAD_VAR", a);
+    ctx.writer.op("LOAD_VAR", b);
     ctx.writer.op("DIV");
-    ctx.writer.op("STORE_VAR", quot);
-    ctx.writer.op("LOAD_VAR", quot);
-    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, right));
+    ctx.writer.op("LOAD_VAR", b);
     ctx.writer.op("MUL");
-    ctx.writer.op("STORE_VAR", prod);
-    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, left));
-    ctx.writer.op("LOAD_VAR", prod);
     ctx.writer.op("SUB");
     ctx.stackTop = result;
 }
 
 void emitVmIndex(EmitCtx &ctx, irs::ValueId pascalIndex, std::int64_t arrayLow) {
-    // vmIndex = pascalIndex - arrayLow + 1
+    // vmIndex = pascalIndex - (arrayLow - 1); omit the subtract when lo is 1.
     ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, pascalIndex));
-    ctx.writer.pushInt(arrayLow);
+    const std::int64_t offset = arrayLow - 1;
+    if (offset == 0) {
+        return;
+    }
+    // The VM parses PUSH_INT with std::stoi, so lo == INT32_MIN cannot fold to lo - 1.
+    if (offset < std::numeric_limits<std::int32_t>::min()) {
+        ctx.writer.pushInt(arrayLow);
+        ctx.writer.op("SUB");
+        ctx.writer.pushInt(1);
+        ctx.writer.op("ADD");
+        return;
+    }
+    ctx.writer.pushInt(offset);
     ctx.writer.op("SUB");
-    ctx.writer.pushInt(1);
-    ctx.writer.op("ADD");
 }
 
 void emitDimArray(EmitCtx &ctx, const irs::Instr &instr) {
@@ -246,39 +242,19 @@ void emitDimArray(EmitCtx &ctx, const irs::Instr &instr) {
     ctx.writer.pushInt(size);
     ctx.writer.op("DIM_ARRAY", name);
 
-    const std::string dimVar = name + "$dim";
-    const std::string iVar = name + "$i";
-    const std::string head = name + "$init.head";
-    const std::string end = name + "$init.end";
-    ctx.writer.pushInt(size);
-    ctx.writer.op("STORE_VAR", dimVar);
-    ctx.writer.pushInt(1);
-    ctx.writer.op("STORE_VAR", iVar);
-    ctx.writer.op("JUMP", head);
-    ctx.writer.label(head);
-    ctx.writer.op("LOAD_VAR", iVar);
-    ctx.writer.op("LOAD_VAR", dimVar);
-    ctx.writer.op("LE");
-    ctx.writer.op("JZ", end);
     switch (instr.type) {
+    case irs::IrType::StringRef:
+        // DIM_ARRAY already fills every element with "".
+        break;
     case irs::IrType::F64:
         ctx.writer.pushFlt(0.0);
-        break;
-    case irs::IrType::StringRef:
-        ctx.writer.pushStr("");
+        ctx.writer.op("MAT_INIT", name);
         break;
     default:
         ctx.writer.pushInt(0);
+        ctx.writer.op("MAT_INIT", name);
         break;
     }
-    ctx.writer.op("LOAD_VAR", iVar);
-    ctx.writer.op("STORE_ARR", name);
-    ctx.writer.op("LOAD_VAR", iVar);
-    ctx.writer.pushInt(1);
-    ctx.writer.op("ADD");
-    ctx.writer.op("STORE_VAR", iVar);
-    ctx.writer.op("JUMP", head);
-    ctx.writer.label(end);
 }
 
 void emitLoadIndex(EmitCtx &ctx, const irs::Instr &instr) {
@@ -320,7 +296,6 @@ void emitStoreIndex(EmitCtx &ctx, const irs::Instr &instr) {
     ctx.writer.op("STORE_ARR", slotName(ctx.function, instr.a));
     ctx.stackTop.reset();
 }
-
 
 void emitConst(EmitCtx &ctx, const irs::Instr &instr) {
     spillStackTop(ctx);

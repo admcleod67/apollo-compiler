@@ -98,6 +98,11 @@ struct Instr {
     std::vector<ValueId> args;
 };
 
+/// True when `instr.result` is a live SSA binding. Void stores, `DimArray`, and
+/// void calls allocate no temp; `DimArray` still carries the element type, so a
+/// type-only test is not enough.
+[[nodiscard]] bool producesValue(const Instr &instr);
+
 struct Terminator {
     TerminatorKind kind{TerminatorKind::Return};
     std::optional<ValueId> value;

@@ -247,8 +247,8 @@ int main() {
         if (!contains(run.tbc, "PUSH_INT 7\n    DIM_ARRAY main$a")) {
             return fail("array [-3..3] should DIM 7 elements");
         }
-        if (!contains(run.tbc, "PUSH_INT -3\n    SUB")) {
-            return fail("array [-3..3] index remap should subtract the -3 low bound");
+        if (!contains(run.tbc, "PUSH_INT -4\n    SUB")) {
+            return fail("array [-3..3] index remap should subtract lo - 1");
         }
     }
 
@@ -408,7 +408,7 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("real parameter fixture should emit with zero diagnostics");
         }
-        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL\n    STORE_VAR main$t3")) {
+        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL") || !contains(run.tbc, "CALL half")) {
             return fail("integer argument should widen before CALL");
         }
     }

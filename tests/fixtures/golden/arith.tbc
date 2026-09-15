@@ -1,0 +1,28 @@
+main:
+    PUSH_INT 17
+    STORE_VAR main$t0
+    PUSH_INT 5
+    STORE_VAR main$t1
+    LOAD_VAR main$t0
+    LOAD_VAR main$t1
+    DIV
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_INT 17
+    STORE_VAR main$t3
+    PUSH_INT 5
+    STORE_VAR main$t4
+    LOAD_VAR main$t3
+    LOAD_VAR main$t3
+    LOAD_VAR main$t4
+    DIV
+    LOAD_VAR main$t4
+    MUL
+    SUB
+    STORE_VAR main$t5
+    LOAD_VAR main$t5
+    PRINT_VAL
+    PRINT_EOL
+    HALT

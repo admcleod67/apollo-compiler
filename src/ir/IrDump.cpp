@@ -119,8 +119,11 @@ void dumpOperand(std::ostream &out, const Operand &operand) {
 
 void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
     indent(out, depth);
-    dumpValue(out, instr.result);
-    out << " = " << opName(instr.op);
+    if (producesValue(instr)) {
+        dumpValue(out, instr.result);
+        out << " = ";
+    }
+    out << opName(instr.op);
 
     switch (instr.op) {
     case Op::ConstI32:

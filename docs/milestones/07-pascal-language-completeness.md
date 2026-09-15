@@ -140,12 +140,13 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 - **`real`:** `Op::ConstF64` → Gemini `PUSH_FLT`. Binary/`Neg` reuse `ADD`/`SUB`/… (VM
   `Value` is `int|double|string`), with `Integer` operands widened first — see the pinned
   semantics below.
-- **`mod`:** Gemini has no core `MOD` opcode. Emit `a - (a div b) * b` with `DIV` /
-  `MUL` / `SUB` (toward-zero `DIV`). Do not call BASIC `CALL_FUNC` MOD.
+- **`mod`:** Gemini has no core `MOD` opcode. Emit `a - (a div b) * b` on the stack as
+  `LOAD a; LOAD a; LOAD b; DIV; LOAD b; MUL; SUB` (toward-zero `DIV`). Do not call
+  BASIC `CALL_FUNC` MOD.
 - **Arrays:** const `[lo..hi]` bounds stored on `Type`; IR `DimArray` / `LoadIndex` /
-  `StoreIndex`; emit remaps Pascal index to VM 1-based via `i - lo + 1`, then
-  `DIM_ARRAY` + zero-init loop + `LOAD_ARR`/`STORE_ARR`. Whole-array assignment still
-  diagnosed.
+  `StoreIndex`; emit remaps Pascal index to VM 1-based via `SUB (lo - 1)` (omitted when
+  `lo` is 1), then `DIM_ARRAY` + `MAT_INIT` (string arrays skip the fill) +
+  `LOAD_ARR`/`STORE_ARR`. Whole-array assignment still diagnosed.
 - **Smoke:** `apolloc --emit <file> | ../pick-system/build/src/gemini-vm /dev/stdin`
   (no CMake dependency on pick-system).
 
@@ -163,6 +164,11 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
   fold to `PUSH_FLT`; other values multiply by `1.0`, because the VM has no int-to-float
   opcode (only `CoerceInt`) and any `double` operand forces a `double` result. A future
   `COERCE_FLT` would replace the pair (**1b**).
+- Integer and real arrays are zero-filled with `PUSH_INT 0` / `PUSH_FLT 0.0` + `MAT_INIT`.
+  String arrays emit bare `DIM_ARRAY`, which already fills with `""` (**1c**).
+- Index remapping folds to a single `SUB (lo - 1)` and is omitted when `lo` is 1. The
+  two-step `SUB lo; ADD 1` form is kept only when `lo - 1` is below `INT32_MIN` (so
+  `array [INT32_MIN..…]`), because the VM parses `PUSH_INT` with `std::stoi` (**1c**).
 - `real` literals outside `double` range are diagnosed rather than emitted as `0` (**1b**).
 - **Known deviation:** real *output* uses the VM's `PRINT_VAL` formatting, so `1.0` prints
   as `1` rather than Pascal's scientific default, and `write(x:8:2)` field widths are not
@@ -189,7 +195,8 @@ cannot distinguish *resolved* bounds from *guessed* ones — which is what let D
 silently.
 
 Follow-ups land as three separate plans, each independently green and mergeable. D1 is
-fixed and D4 is diagnosed as of **1a**; D2 and D3 are fixed in **1b**.
+fixed and D4 is diagnosed as of **1a**; D2 and D3 are fixed in **1b**; **1c** is the
+codegen-quality pass (no semantic change).
 
 **1a — Array bound plumbing (D1, D4) — completed**
 
@@ -221,25 +228,26 @@ fixed and D4 is diagnosed as of **1a**; D2 and D3 are fixed in **1b**.
   widening, real array elements, real parameters, and real `readln`; analyse fixtures for
   literal range.
 
-**1c — Codegen quality and golden `.tbc` (no semantic change)**
+**1c — Codegen quality and golden `.tbc` (no semantic change) — completed**
 
-- Replace the per-array zero-init loop with `PUSH_INT 0` + `MAT_INIT`, dropping ~15
-  instructions, the `$dim` / `$i` helper variables, and two labels per array — plus the
-  intra-basic-block branching that currently makes emitted control flow diverge from the
-  IR CFG. String arrays need nothing: `DIM_ARRAY` already fills with `""`.
-- Fold `SUB lo` + `ADD 1` into a single `SUB (lo - 1)`, and omit it when `lo` is 1.
-- Emit `mod` on the stack (`LOAD a; LOAD a; LOAD b; DIV; LOAD b; MUL; SUB`) instead of
-  spilling `$quot` / `$prod`.
-- Drop the unused `DimArray` / `StoreIndex` result temps and the unused `<sstream>`
-  include in `Emit.cpp`.
-- Add golden `.tbc` fixtures: today's tests assert only that opcode strings appear, which
-  is why D1 escaped.
+- Array zero-init is `PUSH_INT 0` / `PUSH_FLT 0.0` + `MAT_INIT`, dropping the `$dim` /
+  `$i` helper variables and two labels per array. Emitted control flow matches the IR
+  CFG again. String arrays skip the fill: `DIM_ARRAY` already writes `""`.
+- Index remapping is a single `SUB (lo - 1)`, omitted when `lo` is 1, with the two-step
+  form retained only for `lo == INT32_MIN`.
+- `mod` is the seven-op stack sequence rather than `$quot` / `$prod` spills.
+- Void IR instructions (`StoreLocal`, `StoreIndex`, `DimArray`, void `Call` /
+  `CallRuntime`) no longer allocate unused result temps; `IrDump` prints a `%N =`
+  binding only when `producesValue` holds.
+- Golden `.tbc` fixtures under `tests/fixtures/golden/` lock the full emit text
+  (`hello`, `count`, `arith`, `arrays`, `reals`, `subprograms`). Regenerate with
+  `APOLLO_UPDATE_GOLDEN=1`.
 
-**Sequencing:** 1a and 1b were independent of each other. 1c goes **last** — it reshapes
-nearly every emitted array sequence, so goldens added before the semantics settle would be
-rewritten twice.
+**Sequencing:** 1a and 1b were independent of each other. 1c went **last** — it reshapes
+nearly every emitted array sequence, so goldens added before the semantics settled would
+have been rewritten twice.
 
-**Status:** completed — **1a** and **1b** landed; follow-up **1c** open.
+**Status:** completed — **1a**, **1b**, and **1c** landed.
 
 ### Stage 2 — Records (M7b)
 
@@ -294,7 +302,7 @@ rewritten twice.
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Scalar / array debt | completed; 1a–1b landed, 1c open |
+| Stage 1 — Scalar / array debt | completed |
 | Stage 2 — Records | not started |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |

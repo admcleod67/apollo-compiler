@@ -1,0 +1,37 @@
+main:
+    PUSH_INT 1
+    STORE_VAR main$t0
+    LOAD_VAR main$t0
+    STORE_VAR main$i
+    PUSH_INT 10
+    STORE_VAR main$t1
+    JUMP main$for.head.0
+main$for.head.0:
+    LOAD_VAR main$i
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    LOAD_VAR main$t1
+    LE
+    STORE_VAR main$t3
+    LOAD_VAR main$t3
+    JZ main$for.end.2
+    JUMP main$for.body.1
+main$for.body.1:
+    LOAD_VAR main$i
+    STORE_VAR main$t4
+    LOAD_VAR main$t4
+    PRINT_VAL
+    PRINT_EOL
+    LOAD_VAR main$i
+    STORE_VAR main$t5
+    PUSH_INT 1
+    STORE_VAR main$t6
+    LOAD_VAR main$t5
+    LOAD_VAR main$t6
+    ADD
+    STORE_VAR main$t7
+    LOAD_VAR main$t7
+    STORE_VAR main$i
+    JUMP main$for.head.0
+main$for.end.2:
+    HALT

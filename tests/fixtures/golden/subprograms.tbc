@@ -1,0 +1,36 @@
+main:
+    PUSH_INT 3
+    STORE_VAR main$t0
+    LOAD_VAR main$t0
+    CALL greet
+    PUSH_INT 4
+    STORE_VAR main$t1
+    LOAD_VAR main$t1
+    CALL twice
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    PRINT_VAL
+    PRINT_EOL
+    HALT
+greet:
+    STORE_VAR greet$n
+    LOAD_VAR greet$n
+    STORE_VAR greet$t0
+    LOAD_VAR greet$t0
+    PRINT_VAL
+    PRINT_EOL
+    RETURN
+twice:
+    STORE_VAR twice$n
+    PUSH_INT 0
+    STORE_VAR twice$t0
+    LOAD_VAR twice$n
+    STORE_VAR twice$t1
+    LOAD_VAR twice$n
+    STORE_VAR twice$t2
+    LOAD_VAR twice$t1
+    LOAD_VAR twice$t2
+    ADD
+    STORE_VAR twice$t3
+    LOAD_VAR twice$t3
+    RETURN

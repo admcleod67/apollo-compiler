@@ -1,0 +1,39 @@
+main:
+    PUSH_FLT 3.14159265358979
+    STORE_VAR main$t0
+    LOAD_VAR main$t0
+    STORE_VAR main$x
+    LOAD_VAR main$x
+    STORE_VAR main$t1
+    LOAD_VAR main$t1
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_INT 1
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t3
+    LOAD_VAR main$t3
+    PUSH_FLT 1.0
+    MUL
+    STORE_VAR main$t4
+    LOAD_VAR main$t4
+    STORE_VAR main$x
+    LOAD_VAR main$x
+    STORE_VAR main$t5
+    LOAD_VAR main$t5
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 1.0
+    STORE_VAR main$t6
+    PUSH_FLT 2.0
+    STORE_VAR main$t7
+    LOAD_VAR main$t6
+    LOAD_VAR main$t7
+    DIV
+    STORE_VAR main$t8
+    LOAD_VAR main$t8
+    PRINT_VAL
+    PRINT_EOL
+    HALT

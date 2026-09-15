@@ -1,0 +1,7 @@
+main:
+    PUSH_STR "Hello, Gemini!"
+    STORE_VAR main$t0
+    LOAD_VAR main$t0
+    PRINT_VAL
+    PRINT_EOL
+    HALT

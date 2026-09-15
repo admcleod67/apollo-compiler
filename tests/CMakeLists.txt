@@ -57,6 +57,19 @@ target_link_libraries(pascal_ir_emit_test
 
 target_compile_features(pascal_ir_emit_test PRIVATE cxx_std_20)
 
+add_executable(pascal_tbc_golden_test
+    pascal_tbc_golden_test.cpp
+)
+
+target_link_libraries(pascal_tbc_golden_test
+    PRIVATE
+        apollo::codegen
+        apollo::pascal
+        apollo::ir
+)
+
+target_compile_features(pascal_tbc_golden_test PRIVATE cxx_std_20)
+
 add_executable(apollo_source_listing_test
     source_listing_test.cpp
 )
@@ -151,6 +164,10 @@ add_test(NAME apollo_ir_test COMMAND apollo_ir_test)
 add_test(NAME apollo_codegen_test COMMAND apollo_codegen_test)
 add_test(NAME ir_emit_test COMMAND ir_emit_test)
 add_test(NAME pascal_ir_emit_test COMMAND pascal_ir_emit_test)
+add_test(
+    NAME pascal_tbc_golden_test
+    COMMAND pascal_tbc_golden_test ${CMAKE_SOURCE_DIR}/tests/fixtures/golden
+)
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apollo_location_diagnostics_test COMMAND apollo_location_diagnostics_test)
 add_test(NAME apollo_pascal_scanner_test COMMAND apollo_pascal_scanner_test)

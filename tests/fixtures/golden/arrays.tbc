@@ -1,0 +1,69 @@
+main:
+    PUSH_INT 3
+    DIM_ARRAY main$a
+    PUSH_INT 0
+    MAT_INIT main$a
+    PUSH_INT 5
+    DIM_ARRAY main$r
+    PUSH_FLT 0.0
+    MAT_INIT main$r
+    PUSH_INT 2
+    DIM_ARRAY main$s
+    PUSH_INT 7
+    STORE_VAR main$t0
+    PUSH_INT 1
+    STORE_VAR main$t1
+    LOAD_VAR main$t0
+    LOAD_VAR main$t1
+    STORE_ARR main$a
+    PUSH_INT 1
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    LOAD_ARR main$a
+    STORE_VAR main$t3
+    LOAD_VAR main$t3
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 1.5
+    STORE_VAR main$t4
+    PUSH_INT 2
+    STORE_VAR main$t5
+    PUSH_INT 0
+    LOAD_VAR main$t5
+    SUB
+    STORE_VAR main$t6
+    LOAD_VAR main$t4
+    LOAD_VAR main$t6
+    PUSH_INT -3
+    SUB
+    STORE_ARR main$r
+    PUSH_INT 2
+    STORE_VAR main$t7
+    PUSH_INT 0
+    LOAD_VAR main$t7
+    SUB
+    STORE_VAR main$t8
+    LOAD_VAR main$t8
+    PUSH_INT -3
+    SUB
+    LOAD_ARR main$r
+    STORE_VAR main$t9
+    LOAD_VAR main$t9
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_STR "ok"
+    STORE_VAR main$t10
+    PUSH_INT 2
+    STORE_VAR main$t11
+    LOAD_VAR main$t10
+    LOAD_VAR main$t11
+    STORE_ARR main$s
+    PUSH_INT 2
+    STORE_VAR main$t12
+    LOAD_VAR main$t12
+    LOAD_ARR main$s
+    STORE_VAR main$t13
+    LOAD_VAR main$t13
+    PRINT_VAL
+    PRINT_EOL
+    HALT
