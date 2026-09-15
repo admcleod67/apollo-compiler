@@ -350,6 +350,69 @@ irs::ValueId emitBinaryOp(LowerCtx &ctx, irs::Op op, irs::ValueId left, irs::Val
     return result;
 }
 
+/// Strip `Group` wrappers so `(1)` still reads as an integer literal.
+const ast::Expr *peelGroups(const ast::Expr *expr) {
+    while (expr && expr->kind == ast::ExprKind::Group) {
+        expr = expr->left.get();
+    }
+    return expr;
+}
+
+/// Lower `expr` for a Real context.
+///
+/// Gemini decides between integer and float arithmetic from the runtime operand types, so
+/// an Integer value reaching a Real context has to be widened here or `/` truncates.
+/// Integer literals become `ConstF64` outright; everything else gets a `ConvertF64`.
+irs::ValueId lowerExprAsReal(LowerCtx &ctx, const ast::Expr &expr) {
+    if (const ast::Expr *inner = peelGroups(&expr);
+        inner && inner->kind == ast::ExprKind::IntegerLiteral) {
+        return emitConstF64(ctx, static_cast<double>(parseIntegerLiteral(inner->text)));
+    }
+    const irs::ValueId value = lowerExpr(ctx, expr);
+    if (toIrType(expr.type) != irs::IrType::I32) {
+        return value;
+    }
+    return emitUnaryOp(ctx, irs::Op::ConvertF64, value, irs::IrType::F64);
+}
+
+/// Lower `expr` for a destination of `target` type, widening Integer → Real as needed.
+irs::ValueId lowerExprFor(LowerCtx &ctx, const ast::Expr &expr, irs::IrType target) {
+    if (target == irs::IrType::F64) {
+        return lowerExprAsReal(ctx, expr);
+    }
+    return lowerExpr(ctx, expr);
+}
+
+/// Element type recorded on an array param/local slot by `fillArrayMeta`.
+irs::IrType arrayElementType(const LowerCtx &ctx, const irs::Operand &operand) {
+    if (operand.kind == irs::OperandKind::Local && operand.slot < ctx.function.locals.size()) {
+        return ctx.function.locals[operand.slot].arrayElement;
+    }
+    if (operand.kind == irs::OperandKind::Param && operand.slot < ctx.function.params.size()) {
+        return ctx.function.params[operand.slot].arrayElement;
+    }
+    return irs::IrType::Error;
+}
+
+/// Lower call arguments, widening each one the callee declared as `real`.
+std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &calleeName,
+                                        const std::vector<std::unique_ptr<ast::Expr>> &args) {
+    const Symbol *callee = ctx.symbols.lookup(calleeName);
+    std::vector<irs::ValueId> values;
+    values.reserve(args.size());
+    for (std::size_t i = 0; i < args.size(); ++i) {
+        if (!args[i]) {
+            continue;
+        }
+        irs::IrType paramType = irs::IrType::Error;
+        if (callee && i < callee->paramTypes.size()) {
+            paramType = toIrType(callee->paramTypes[i]);
+        }
+        values.push_back(lowerExprFor(ctx, *args[i], paramType));
+    }
+    return values;
+}
+
 irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
                            std::vector<irs::ValueId> args, irs::IrType resultType) {
     irs::Instr call;
@@ -494,22 +557,21 @@ irs::ValueId lowerUnary(LowerCtx &ctx, const ast::Expr &expr) {
 }
 
 irs::ValueId lowerBinary(LowerCtx &ctx, const ast::Expr &expr) {
-    const irs::ValueId left = expr.left ? lowerExpr(ctx, *expr.left) : emitConstI32(ctx, 0);
-    const irs::ValueId right = expr.right ? lowerExpr(ctx, *expr.right) : emitConstI32(ctx, 0);
-    return emitBinaryOp(ctx, toBinaryOp(expr.binaryOp), left, right, toIrType(expr.type));
+    // A Real-typed operator needs Real operands: Pascal `/` is real division even when both
+    // operands are integers, but Gemini's `DIV` truncates when it sees two ints.
+    const irs::IrType resultType = toIrType(expr.type);
+    const irs::ValueId left =
+        expr.left ? lowerExprFor(ctx, *expr.left, resultType) : emitConstI32(ctx, 0);
+    const irs::ValueId right =
+        expr.right ? lowerExprFor(ctx, *expr.right, resultType) : emitConstI32(ctx, 0);
+    return emitBinaryOp(ctx, toBinaryOp(expr.binaryOp), left, right, resultType);
 }
 
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
     // Builtins are statement-only per M3 (never valid as an expression), so a Call
     // Expr here is always a user function call.
-    std::vector<irs::ValueId> argValues;
-    argValues.reserve(expr.args.size());
-    for (const auto &arg : expr.args) {
-        if (arg) {
-            argValues.push_back(lowerExpr(ctx, *arg));
-        }
-    }
-    return lowerUserCall(ctx, expr.text, std::move(argValues), toIrType(expr.type));
+    return lowerUserCall(ctx, expr.text, lowerCallArgs(ctx, expr.text, expr.args),
+                         toIrType(expr.type));
 }
 
 irs::ValueId lowerIndexExpr(LowerCtx &ctx, const ast::Expr &expr) {
@@ -526,15 +588,7 @@ irs::ValueId lowerIndexExpr(LowerCtx &ctx, const ast::Expr &expr) {
     }
     const irs::ValueId index =
         expr.right ? lowerExpr(ctx, *expr.right) : emitConstI32(ctx, 0);
-    irs::IrType elementType = toIrType(expr.type);
-    if (slot->operand.kind == irs::OperandKind::Local &&
-        slot->operand.slot < ctx.function.locals.size()) {
-        elementType = ctx.function.locals[slot->operand.slot].arrayElement;
-    } else if (slot->operand.kind == irs::OperandKind::Param &&
-               slot->operand.slot < ctx.function.params.size()) {
-        elementType = ctx.function.params[slot->operand.slot].arrayElement;
-    }
-    return emitLoadIndex(ctx, slot->operand, index, elementType);
+    return emitLoadIndex(ctx, slot->operand, index, arrayElementType(ctx, slot->operand));
 }
 
 irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
@@ -632,13 +686,7 @@ void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
         return;
     }
 
-    std::vector<irs::ValueId> argValues;
-    argValues.reserve(stmt.args.size());
-    for (const auto &arg : stmt.args) {
-        if (arg) {
-            argValues.push_back(lowerExpr(ctx, *arg));
-        }
-    }
+    std::vector<irs::ValueId> argValues = lowerCallArgs(ctx, stmt.name, stmt.args);
 
     irs::IrType calleeReturnType = irs::IrType::Void;
     if (const Symbol *callee = ctx.symbols.lookup(stmt.name);
@@ -650,13 +698,16 @@ void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
 }
 
 void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
-    const irs::ValueId value = stmt.value ? lowerExpr(ctx, *stmt.value) : emitConstI32(ctx, 0);
     const std::string folded = foldAsciiLower(stmt.name);
+    // The destination type decides whether the RHS needs widening, so resolve it first.
+    auto lowerValue = [&](irs::IrType target) {
+        return stmt.value ? lowerExprFor(ctx, *stmt.value, target) : emitConstI32(ctx, 0);
+    };
 
     if (ctx.functionResultName && folded == *ctx.functionResultName) {
         // Assigning to the enclosing function's own name sets its return value; there is
         // no local slot backing it.
-        ctx.resultValue = value;
+        ctx.resultValue = lowerValue(ctx.function.returnType);
         return;
     }
 
@@ -668,11 +719,12 @@ void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
         return;
     }
     if (stmt.index) {
+        const irs::ValueId value = lowerValue(arrayElementType(ctx, slot->operand));
         const irs::ValueId index = lowerExpr(ctx, *stmt.index);
         emitStoreIndex(ctx, slot->operand, index, value);
         return;
     }
-    emitStore(ctx, slot->operand, value);
+    emitStore(ctx, slot->operand, lowerValue(slot->type));
 }
 
 void lowerIf(LowerCtx &ctx, const ast::Stmt &stmt) {

@@ -335,5 +335,117 @@ int main() {
         }
     }
 
+    // Pascal `/` is real division: integer operands must be widened, not truncated.
+    {
+        ScanAnalyseLowerEmit run("realdiv.pas",
+                                 "program RealDiv;\n"
+                                 "begin\n"
+                                 "  writeln(1 / 2);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("1 / 2 should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_FLT 1.0") || !contains(run.tbc, "PUSH_FLT 2.0")) {
+            return fail("1 / 2 should push float operands");
+        }
+        if (contains(run.tbc, "PUSH_INT 1\n") || contains(run.tbc, "PUSH_INT 2\n")) {
+            return fail("1 / 2 should not keep integer operands");
+        }
+    }
+
+    // Integer variable assigned to a real, then used in real division.
+    {
+        ScanAnalyseLowerEmit run("realwiden.pas",
+                                 "program RealWiden;\n"
+                                 "var\n"
+                                 "  x: real;\n"
+                                 "  i: integer;\n"
+                                 "begin\n"
+                                 "  i := 7;\n"
+                                 "  x := i;\n"
+                                 "  writeln(i / 2);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("integer to real widening should emit with zero diagnostics");
+        }
+        // ConvertF64 widens by multiplying with 1.0 (Gemini has no int -> float opcode).
+        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL")) {
+            return fail("widening should emit a PUSH_FLT 1.0 / MUL pair");
+        }
+    }
+
+    // Real array element assigned an integer literal.
+    {
+        ScanAnalyseLowerEmit run("realarr.pas",
+                                 "program RealArr;\n"
+                                 "var\n"
+                                 "  a: array [1..2] of real;\n"
+                                 "begin\n"
+                                 "  a[1] := 1;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("real array element assign should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_FLT 1.0")) {
+            return fail("real array element should store a float");
+        }
+    }
+
+    // Integer argument passed to a real parameter.
+    {
+        ScanAnalyseLowerEmit run("realparam.pas",
+                                 "program RealParam;\n"
+                                 "var\n"
+                                 "  i: integer;\n"
+                                 "function half(v: real): real;\n"
+                                 "begin\n"
+                                 "  half := v / 2;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  i := 3;\n"
+                                 "  writeln(half(i));\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("real parameter fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL\n    STORE_VAR main$t3")) {
+            return fail("integer argument should widen before CALL");
+        }
+    }
+
+    // readln into a real reads a line and parses it (no float input opcode).
+    {
+        ScanAnalyseLowerEmit run("realread.pas",
+                                 "program RealRead;\n"
+                                 "var\n"
+                                 "  x: real;\n"
+                                 "begin\n"
+                                 "  readln(x);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("readln of a real should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "INPUT_STR\n    PUSH_FLT 1.0\n    MUL")) {
+            return fail("readln of a real should parse the input line as a float");
+        }
+    }
+
+    // Real literals keep full precision through emit.
+    {
+        ScanAnalyseLowerEmit run("realprec.pas",
+                                 "program RealPrec;\n"
+                                 "var\n"
+                                 "  x: real;\n"
+                                 "begin\n"
+                                 "  x := 3.14159265358979;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("real literal fixture should emit with zero diagnostics");
+        }
+        if (!contains(run.tbc, "PUSH_FLT 3.14159265358979")) {
+            return fail("real literal should not be truncated to six digits");
+        }
+    }
+
     return 0;
 }

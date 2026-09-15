@@ -88,6 +88,17 @@ bool isReadable(TypeTag tag) {
     return tag == TypeTag::Integer || tag == TypeTag::Real || tag == TypeTag::Char;
 }
 
+/// `real` literals outside `double` range would otherwise be silently emitted as 0.
+void checkRealLiteralRange(const ast::Expr &expr,
+                           apollo::common::DiagnosticEngine &diagnostics) {
+    try {
+        (void)std::stod(expr.text);
+    } catch (...) {
+        diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                           "real literal out of range");
+    }
+}
+
 TypePtr typeOfLiteralExpr(const ast::Expr *expr,
                           apollo::common::DiagnosticEngine &diagnostics) {
     if (!expr) {
@@ -98,6 +109,7 @@ TypePtr typeOfLiteralExpr(const ast::Expr *expr,
     case ast::ExprKind::IntegerLiteral:
         return makePredefined(TypeTag::Integer);
     case ast::ExprKind::RealLiteral:
+        checkRealLiteralRange(*expr, diagnostics);
         return makePredefined(TypeTag::Real);
     case ast::ExprKind::CharLiteral:
         return makePredefined(TypeTag::Char);
@@ -465,6 +477,7 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
         result = makePredefined(TypeTag::Integer);
         break;
     case ast::ExprKind::RealLiteral:
+        checkRealLiteralRange(expr, ctx.diagnostics);
         result = makePredefined(TypeTag::Real);
         break;
     case ast::ExprKind::CharLiteral:

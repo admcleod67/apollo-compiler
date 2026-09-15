@@ -54,7 +54,7 @@ Major Wirth gaps (not yet end-to-end):
 | Area | Status |
 |------|--------|
 | Array **indexing** `a[i]` | Stage 1 + **1a**: all const bound forms; array params diagnosed |
-| `real` / `mod` through emit | Stage 1: `PUSH_FLT` / mod sequence; follow-up **1b** open |
+| `real` / `mod` through emit | Stage 1 + **1b**: `PUSH_FLT`, mod sequence, `Integer` widening |
 | `record` / field select | Keywords reserved; not in grammar |
 | `case` | Keyword reserved; not in grammar |
 | Nested procs with up-level locals | Parsed; lowering diagnoses |
@@ -128,7 +128,7 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 **Acceptance criteria**
 
 - [x] `real` literals/vars emit `PUSH_FLT` (no codegen hard-fail).
-- [ ] `real` arithmetic is faithful: literal precision round-trips and `Integer → Real`
+- [x] `real` arithmetic is faithful: literal precision round-trips and `Integer → Real`
   widens before real division (follow-up **1b**).
 - [x] Integer `mod` emits without a language module.
 - [x] Indexed array load/store emit `DIM_ARRAY` / `LOAD_ARR` / `STORE_ARR`.
@@ -138,7 +138,8 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 **Stage 1 notes**
 
 - **`real`:** `Op::ConstF64` → Gemini `PUSH_FLT`. Binary/`Neg` reuse `ADD`/`SUB`/… (VM
-  `Value` is `int|double|string`).
+  `Value` is `int|double|string`), with `Integer` operands widened first — see the pinned
+  semantics below.
 - **`mod`:** Gemini has no core `MOD` opcode. Emit `a - (a div b) * b` with `DIV` /
   `MUL` / `SUB` (toward-zero `DIV`). Do not call BASIC `CALL_FUNC` MOD.
 - **Arrays:** const `[lo..hi]` bounds stored on `Type`; IR `DimArray` / `LoadIndex` /
@@ -157,6 +158,17 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
   (`Array index out of bounds: MAIN$A`). Apollo emits no range check of its own.
 - Bounds and element counts must fit the VM's 32-bit `int`; analyse diagnoses anything
   wider rather than letting an oversized `PUSH_INT` fail at `.tbc` load time (**1a**).
+- Gemini picks integer or float arithmetic from the *runtime* operand types, so lowering
+  widens `Integer → Real` explicitly (IR `ConvertF64`). Integer literals in a real context
+  fold to `PUSH_FLT`; other values multiply by `1.0`, because the VM has no int-to-float
+  opcode (only `CoerceInt`) and any `double` operand forces a `double` result. A future
+  `COERCE_FLT` would replace the pair (**1b**).
+- `real` literals outside `double` range are diagnosed rather than emitted as `0` (**1b**).
+- **Known deviation:** real *output* uses the VM's `PRINT_VAL` formatting, so `1.0` prints
+  as `1` rather than Pascal's scientific default, and `write(x:8:2)` field widths are not
+  supported. Both belong to the Stage 4 dialect close-out.
+- `readln` of a `real` reads a line with `INPUT_STR` and parses it via the same widening
+  multiply, since Gemini has no float input opcode (**1b**).
 
 **Stage 1 review findings**
 
@@ -177,7 +189,7 @@ cannot distinguish *resolved* bounds from *guessed* ones — which is what let D
 silently.
 
 Follow-ups land as three separate plans, each independently green and mergeable. D1 is
-fixed and D4 is diagnosed as of **1a**; D2 and D3 remain open in **1b**.
+fixed and D4 is diagnosed as of **1a**; D2 and D3 are fixed in **1b**.
 
 **1a — Array bound plumbing (D1, D4) — completed**
 
@@ -195,12 +207,19 @@ fixed and D4 is diagnosed as of **1a**; D2 and D3 remain open in **1b**.
 - Tests: negative low bound, parenthesised bound, program-level and subprogram-local const
   bounds, subprogram-local type alias, plus the three new diagnostics.
 
-**1b — Real numerics (D2, D3)**
+**1b — Real numerics (D2, D3) — completed**
 
-- Emit round-trippable `PUSH_FLT` operands (`setprecision(17)` or shortest round-trip).
-- Widen `Integer → Real` before real division and real assignment — real-typed integer
-  literals as `PUSH_FLT`, an IR convert op, or emit-side coercion when the result type is
-  `F64`.
+- `PUSH_FLT` operands use the shortest spelling that reads back as the same `double`, and
+  integral values keep a decimal point.
+- IR gained `Op::ConvertF64`. Lowering widens wherever an Integer value reaches a Real
+  context: real-typed operators (so `1 / 2` is `0.5`), assignment to a `real` variable,
+  `array of real` element, function result, and `real` parameters. Integer literals fold
+  straight to `ConstF64`, so the widening multiply only appears for integer *values*.
+- Out-of-range `real` literals are diagnosed, and `readln` of a `real` no longer hard-fails
+  codegen.
+- Tests: precision round-trip in the codegen test; emit fixtures for real division,
+  widening, real array elements, real parameters, and real `readln`; analyse fixtures for
+  literal range.
 
 **1c — Codegen quality and golden `.tbc` (no semantic change)**
 
@@ -216,11 +235,11 @@ fixed and D4 is diagnosed as of **1a**; D2 and D3 remain open in **1b**.
 - Add golden `.tbc` fixtures: today's tests assert only that opcode strings appear, which
   is why D1 escaped.
 
-**Sequencing:** 1a and 1b are independent of each other. 1c goes **last** — it reshapes
+**Sequencing:** 1a and 1b were independent of each other. 1c goes **last** — it reshapes
 nearly every emitted array sequence, so goldens added before the semantics settle would be
 rewritten twice.
 
-**Status:** completed — **1a** landed; follow-ups **1b** and **1c** open.
+**Status:** completed — **1a** and **1b** landed; follow-up **1c** open.
 
 ### Stage 2 — Records (M7b)
 
@@ -260,7 +279,7 @@ rewritten twice.
 - [x] Array indexing is correct for every accepted bound form, and array parameters are
   either supported or diagnosed (Stage 1 follow-up **1a**).
 - [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
-- [ ] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
+- [x] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
 - [ ] Flat `record` field access emits and runs.
 - [ ] `case` on ordinal types emits and runs.
 - [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
@@ -275,7 +294,7 @@ rewritten twice.
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Scalar / array debt | completed; 1a landed, 1b–1c open |
+| Stage 1 — Scalar / array debt | completed; 1a–1b landed, 1c open |
 | Stage 2 — Records | not started |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |

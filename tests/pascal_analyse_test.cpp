@@ -352,5 +352,36 @@ int main() {
         }
     }
 
+    // Real literal outside double range.
+    {
+        ScanAnalyse run("realbig.pas",
+                        "program P;\n"
+                        "var\n"
+                        "  x: real;\n"
+                        "begin\n"
+                        "  x := 1e999;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("out-of-range real literal should diagnose");
+        }
+    }
+
+    // Representable real literals stay clean, including as const initializers.
+    {
+        ScanAnalyse run("realok.pas",
+                        "program P;\n"
+                        "const\n"
+                        "  pi = 3.14159265358979;\n"
+                        "var\n"
+                        "  x: real;\n"
+                        "begin\n"
+                        "  x := pi;\n"
+                        "  x := 1e-300;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("representable real literals should be clean");
+        }
+    }
+
     return 0;
 }

@@ -32,6 +32,8 @@ enum class Op {
     ConstChar,
     ConstString,
     Copy,
+    /// Widen an integer-typed value in `a` to F64 (Pascal `Integer` → `Real`).
+    ConvertF64,
     LoadLocal,
     StoreLocal,
     DimArray,

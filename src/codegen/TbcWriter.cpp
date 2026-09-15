@@ -1,11 +1,43 @@
 #include "apollo/codegen/TbcWriter.hpp"
 
+#include <iomanip>
 #include <ostream>
+#include <sstream>
+#include <string>
 
 namespace apollo::codegen {
 namespace {
 
 constexpr char kInstrIndent[] = "    ";
+
+/// Keep the operand recognisable as a float rather than an integer: the VM parses with
+/// `std::stod` either way, but `PUSH_FLT 1.0` reads better than `PUSH_FLT 1`.
+std::string withDecimalPoint(std::string text) {
+    if (text.find_first_of(".eEni") == std::string::npos) {
+        text += ".0";
+    }
+    return text;
+}
+
+/// Shortest decimal spelling that reads back as the same `double`. The default stream
+/// precision is 6 significant digits, which silently truncates real literals.
+std::string formatDouble(double value) {
+    for (int precision = 15; precision <= 17; ++precision) {
+        std::ostringstream oss;
+        oss << std::setprecision(precision) << value;
+        const std::string text = oss.str();
+        try {
+            if (std::stod(text) == value) {
+                return withDecimalPoint(text);
+            }
+        } catch (...) { // NaN / infinity spellings never round-trip through stod
+            break;
+        }
+    }
+    std::ostringstream oss;
+    oss << std::setprecision(17) << value;
+    return withDecimalPoint(oss.str());
+}
 
 } // namespace
 
@@ -58,7 +90,7 @@ void TbcWriter::pushInt(std::int64_t value) {
 }
 
 void TbcWriter::pushFlt(double value) {
-    buffer_ << kInstrIndent << "PUSH_FLT " << value << '\n';
+    buffer_ << kInstrIndent << "PUSH_FLT " << formatDouble(value) << '\n';
 }
 
 void TbcWriter::pushStr(std::string_view value) {

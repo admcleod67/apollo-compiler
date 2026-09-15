@@ -137,6 +137,22 @@ void emitUnaryNeg(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
     ctx.stackTop = result;
 }
 
+/// Gemini has no int → float opcode (only `CoerceInt` the other way), but any `double`
+/// operand forces a `double` result (`arithmeticResultValue` in the VM `Runtime`), and the
+/// product is exact for every `int32`. A single `COERCE_FLT` would replace this pair if
+/// the VM ever grows one.
+void emitConvertF64(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
+    spillStackTop(ctx);
+    if (ctx.spilled.count(operand.id) == 0) {
+        ctx.fail("codegen: convert operand unavailable");
+        return;
+    }
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, operand));
+    ctx.writer.pushFlt(1.0);
+    ctx.writer.op("MUL");
+    ctx.stackTop = result;
+}
+
 void emitUnaryNot(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
     spillStackTop(ctx);
     if (ctx.spilled.count(operand.id) == 0) {
@@ -361,6 +377,12 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
         spillStackTop(ctx);
         if (instr.type == irs::IrType::I32 || instr.type == irs::IrType::Bool) {
             ctx.writer.op("INPUT_INT");
+        } else if (instr.type == irs::IrType::F64) {
+            // Gemini has no float input opcode; read the line and let the multiply below
+            // parse it (VM `coerceToDouble` runs `strtod` over string operands).
+            ctx.writer.op("INPUT_STR");
+            ctx.writer.pushFlt(1.0);
+            ctx.writer.op("MUL");
         } else if (instr.type == irs::IrType::StringRef || instr.type == irs::IrType::Char) {
             ctx.writer.op("INPUT_STR");
         } else {
@@ -460,6 +482,10 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
         break;
     case irs::Op::StoreIndex:
         emitStoreIndex(ctx, instr);
+        break;
+    case irs::Op::ConvertF64:
+        emitConvertF64(ctx, operandValue(instr.a), instr.result);
+        spillStackTop(ctx);
         break;
     case irs::Op::Neg:
         emitUnaryNeg(ctx, operandValue(instr.a), instr.result);

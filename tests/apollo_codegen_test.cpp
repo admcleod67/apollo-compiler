@@ -71,5 +71,30 @@ int main() {
         }
     }
 
+    // Operands must read back as the same double, not the default 6 significant digits.
+    {
+        const double values[] = {3.14159265358979, 123456789.5, 1e-7, -0.1, 1e20};
+        for (const double value : values) {
+            apollo::codegen::TbcWriter writer;
+            writer.pushFlt(value);
+            const std::string text = writer.str();
+            const std::size_t start = text.find("PUSH_FLT ") + 9;
+            const std::string operand = text.substr(start, text.find('\n', start) - start);
+            if (std::stod(operand) != value) {
+                return fail("PUSH_FLT operand does not round-trip");
+            }
+        }
+    }
+
+    // Integral values still look like floats.
+    {
+        apollo::codegen::TbcWriter writer;
+        writer.pushFlt(1.0);
+        writer.pushFlt(0.0);
+        if (writer.str() != "    PUSH_FLT 1.0\n    PUSH_FLT 0.0\n") {
+            return fail("integral PUSH_FLT operands should keep a decimal point");
+        }
+    }
+
     return 0;
 }
