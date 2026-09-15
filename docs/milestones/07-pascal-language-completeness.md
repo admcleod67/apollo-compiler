@@ -53,8 +53,8 @@ Major Wirth gaps (not yet end-to-end):
 
 | Area | Status |
 |------|--------|
-| Array **indexing** `a[i]` | Completed in Stage 1 (`DIM_ARRAY` / remap) |
-| `real` / `mod` through emit | Completed in Stage 1 (`PUSH_FLT`; mod sequence) |
+| Array **indexing** `a[i]` | Stage 1: runs for plain literal bounds; follow-up **1a** open |
+| `real` / `mod` through emit | Stage 1: `PUSH_FLT` / mod sequence; follow-up **1b** open |
 | `record` / field select | Keywords reserved; not in grammar |
 | `case` | Keyword reserved; not in grammar |
 | Nested procs with up-level locals | Parsed; lowering diagnoses |
@@ -128,8 +128,11 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 **Acceptance criteria**
 
 - [x] `real` literals/vars emit `PUSH_FLT` (no codegen hard-fail).
+- [ ] `real` arithmetic is faithful: literal precision round-trips and `Integer → Real`
+  widens before real division (follow-up **1b**).
 - [x] Integer `mod` emits without a language module.
 - [x] Indexed array load/store emit `DIM_ARRAY` / `LOAD_ARR` / `STORE_ARR`.
+- [ ] Every accepted array bound form lowers correctly (follow-up **1a**).
 - [x] Stage fixtures pass under `ctest`.
 
 **Stage 1 notes**
@@ -145,7 +148,73 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 - **Smoke:** `apolloc --emit <file> | ../pick-system/build/src/gemini-vm /dev/stdin`
   (no CMake dependency on pick-system).
 
-**Status:** completed.
+**Semantics pinned in Stage 1**
+
+- `mod` uses truncated division, so `-7 mod 2` is `-1` and `7 mod -2` is `1`. That matches
+  Turbo Pascal, **not** ISO / Wirth (which yields `1` and treats a non-positive divisor as
+  an error). Turbo compatibility is the intended choice for this dialect.
+- Array bounds checking comes from the VM, which reports mangled slot names
+  (`Array index out of bounds: MAIN$A`). Apollo emits no range check of its own.
+- Nothing validates that bounds or element counts fit the VM's 32-bit `int`; oversized
+  `PUSH_INT` operands fail at `.tbc` load time (see follow-up **1a**).
+
+**Stage 1 review findings (open follow-ups)**
+
+A post-implementation review (diff read plus `apolloc --emit` runs piped through
+`gemini-vm`) confirmed the happy path — `array [1..5]` filled and summed in a `for` loop
+prints `55`, `17 mod 5` prints `2` — and found four defects, three of which miscompile
+silently instead of diagnosing:
+
+| # | Defect | Symptom |
+|---|--------|---------|
+| D1 | `Lower.cpp` re-derives array bounds with a weaker evaluator than `Analyse.cpp` (plain integer literal, or a const whose initializer is one) and silently defaults to `1` | `array [-3..3]`, `array [1..(4)]`, and a const bound declared inside a subprogram get the wrong `DIM_ARRAY` size and index remap; `a[-3] := 7` traps as `Array index out of bounds: MAIN$A` |
+| D2 | `TbcWriter::pushFlt` writes through the default stream precision (6 significant digits) | `3.14159265358979` prints `3.14159`; `123456789.5` prints `123457000` |
+| D3 | No `Integer → Real` widening: `/` and `div` both emit a bare `DIV`, and the VM picks integer vs float division from runtime operand types | `x: real; x := 1; writeln(x / 2)` prints `0`, and so does `writeln(1 / 2)` |
+| D4 | Array-typed parameters pass analyse and emit `LOAD_VAR <array slot>`, but VM arrays live in a separate map from scalars | `p(arr)` fails at run time with `Undefined variable: MAIN$ARR`; `Param::arrayLow` / `arrayHigh` / `arrayElement` is dead metadata |
+
+Contributing design weakness: `makeArray` sets `hasBounds` unconditionally, so the flag
+cannot distinguish *resolved* bounds from *guessed* ones — which is what let D1 pass
+silently.
+
+Follow-ups land as three separate plans, each independently green and mergeable.
+
+**1a — Array bound plumbing (D1, D4)**
+
+- Carry the analysed bounds forward to lowering (resolved type, or bounds recorded on
+  `ast::TypeDenoter`) instead of re-deriving them; treat missing bounds as a hard internal
+  error rather than a `1..1` default.
+- Consider replacing `Type::hasBounds` with optional bounds so the type cannot express a
+  guess.
+- Diagnose array-typed parameters until real support lands in Stage 2.
+- Tests: negative low bound, parenthesised bound, const-named bound, and a bound declared
+  inside a procedure.
+
+**1b — Real numerics (D2, D3)**
+
+- Emit round-trippable `PUSH_FLT` operands (`setprecision(17)` or shortest round-trip).
+- Widen `Integer → Real` before real division and real assignment — real-typed integer
+  literals as `PUSH_FLT`, an IR convert op, or emit-side coercion when the result type is
+  `F64`.
+
+**1c — Codegen quality and golden `.tbc` (no semantic change)**
+
+- Replace the per-array zero-init loop with `PUSH_INT 0` + `MAT_INIT`, dropping ~15
+  instructions, the `$dim` / `$i` helper variables, and two labels per array — plus the
+  intra-basic-block branching that currently makes emitted control flow diverge from the
+  IR CFG. String arrays need nothing: `DIM_ARRAY` already fills with `""`.
+- Fold `SUB lo` + `ADD 1` into a single `SUB (lo - 1)`, and omit it when `lo` is 1.
+- Emit `mod` on the stack (`LOAD a; LOAD a; LOAD b; DIV; LOAD b; MUL; SUB`) instead of
+  spilling `$quot` / `$prod`.
+- Drop the unused `DimArray` / `StoreIndex` result temps and the unused `<sstream>`
+  include in `Emit.cpp`.
+- Add golden `.tbc` fixtures: today's tests assert only that opcode strings appear, which
+  is why D1 escaped.
+
+**Sequencing:** 1a and 1b are independent of each other. 1c goes **last** — it reshapes
+nearly every emitted array sequence, so goldens added before the semantics settle would be
+rewritten twice.
+
+**Status:** completed — follow-ups **1a**–**1c** open.
 
 ### Stage 2 — Records (M7b)
 
@@ -154,6 +223,8 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 - Parse / analyse `record` … `end` and field selection.
 - Lower and emit field load/store (document layout / mangling).
 - Whole-record assign if straightforward; otherwise elementwise / diagnose clearly.
+- Array parameters and whole-array assignment via `MAT_COPY` (moved here from Stage 1,
+  which only diagnoses them — see D4).
 - Not a commitment to `file of record` in M7 — see **Why Pascal `file` I/O waits** above.
 
 ### Stage 3 — `case` + nesting polish (M7c)
@@ -179,8 +250,11 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 
 ## Success criteria (draft)
 
-- [x] Array indexing programs emit (and run on `gemini-vm` when available).
+- [x] Array indexing programs with plain integer-literal bounds emit and run on `gemini-vm`.
+- [ ] Array indexing is correct for every accepted bound form, and array parameters are
+  either supported or diagnosed (Stage 1 follow-up **1a**).
 - [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
+- [ ] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
 - [ ] Flat `record` field access emits and runs.
 - [ ] `case` on ordinal types emits and runs.
 - [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
@@ -195,7 +269,7 @@ Work lands in mergeable stages. Each stage should leave `main` green and update 
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Scalar / array debt | completed |
+| Stage 1 — Scalar / array debt | completed; follow-ups 1a–1c open |
 | Stage 2 — Records | not started |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |
