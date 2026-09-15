@@ -39,6 +39,7 @@ enum class Op {
     DimArray,
     LoadIndex,
     StoreIndex,
+    ArrayCopy,
     Add,
     Sub,
     Mul,
@@ -96,6 +97,8 @@ struct Instr {
     bool boolean{false};
     char character{'\0'};
     std::vector<ValueId> args;
+    /// For `Call`: `MAT_COPY` pairs as `dst|src` mangled names, emitted before `CALL`.
+    std::vector<std::string> matCopies;
 };
 
 /// True when `instr.result` is a live SSA binding. Void stores, `DimArray`, and

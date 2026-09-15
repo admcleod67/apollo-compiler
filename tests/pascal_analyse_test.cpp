@@ -244,7 +244,7 @@ int main() {
         }
     }
 
-    // Compatible array assignment deferred (diagnose whole-array).
+    // Compatible whole-array assignment (value copy via MAT_COPY).
     {
         ScanAnalyse run("arrayok.pas",
                         "program P;\n"
@@ -254,8 +254,8 @@ int main() {
                         "begin\n"
                         "  a := b;\n"
                         "end.\n");
-        if (run.diagnostics.errorCount() == 0) {
-            return fail("whole-array assignment should diagnose until supported");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("compatible whole-array assignment should be clean");
         }
     }
 
@@ -317,7 +317,7 @@ int main() {
         }
     }
 
-    // Array parameters wait on Stage 2 (Gemini keeps arrays outside the scalar store).
+    // Value array parameters (Stage 2).
     {
         ScanAnalyse run("arrayparam.pas",
                         "program P;\n"
@@ -331,8 +331,41 @@ int main() {
                         "begin\n"
                         "  q(arr);\n"
                         "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("value array parameter call should be clean");
+        }
+    }
+
+    // Flat record field access and whole-record assign.
+    {
+        ScanAnalyse run("recordok.pas",
+                        "program RecDemo;\n"
+                        "type\n"
+                        "  point = record x, y: integer; end;\n"
+                        "var\n"
+                        "  p, q: point;\n"
+                        "begin\n"
+                        "  p.x := 1;\n"
+                        "  q := p;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("record field and whole-record assign should be clean");
+        }
+    }
+
+    // Nested record fields are rejected.
+    {
+        ScanAnalyse run("recordnest.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  inner = record x: integer end;\n"
+                        "  outer = record n: inner end;\n"
+                        "var\n"
+                        "  o: outer;\n"
+                        "begin\n"
+                        "end.\n");
         if (run.diagnostics.errorCount() == 0) {
-            return fail("array parameter should diagnose until supported");
+            return fail("nested record field type should diagnose");
         }
     }
 

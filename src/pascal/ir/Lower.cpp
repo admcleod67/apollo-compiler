@@ -84,6 +84,8 @@ irs::IrType toIrType(const TypePtr &type) {
         return irs::IrType::StringRef;
     case TypeTag::Array:
         return irs::IrType::ArrayRef;
+    case TypeTag::Record:
+        return irs::IrType::Error;
     case TypeTag::Alias: // canonicalTag() already peels aliases
     case TypeTag::Error:
         return irs::IrType::Error;
@@ -129,6 +131,10 @@ struct LowerCtx {
     std::unordered_map<std::string, std::uint32_t> paramSlots;
     /// Folded const name -> its literal declaration expr (for inlining at each use).
     std::unordered_map<std::string, const ast::Expr *> constExprs;
+    /// Record field slots: folded `base$field` -> `Function::locals` index.
+    std::unordered_map<std::string, std::uint32_t> fieldSlots;
+    /// Whole record variables (no aggregate slot): folded name -> record type.
+    std::unordered_map<std::string, TypePtr> recordVars;
     /// Monotonic counter for unique block labels within this function.
     std::uint32_t blockCounter{0};
     /// Folded name of the enclosing function, set only while lowering a function body.
@@ -192,8 +198,104 @@ std::optional<ResolvedSlot> resolveSlot(const LowerCtx &ctx, const std::string &
     return std::nullopt;
 }
 
+TypePtr peelTypeAliases(TypePtr type) {
+    while (type && type->tag == TypeTag::Alias) {
+        type = type->canonical;
+    }
+    return type;
+}
+
+std::string fieldSlotKey(std::string_view baseName, std::string_view fieldName) {
+    return foldAsciiLower(baseName) + "$" + foldAsciiLower(fieldName);
+}
+
+std::string fieldStorageName(std::string_view baseName, std::string_view fieldName) {
+    return std::string(baseName) + "$" + std::string(fieldName);
+}
+
+void declareRecordFields(LowerCtx &ctx, std::string_view baseName, const TypePtr &recordType) {
+    const TypePtr peeled = peelTypeAliases(recordType);
+    if (!peeled || peeled->tag != TypeTag::Record) {
+        return;
+    }
+    for (const RecordField &field : peeled->fields) {
+        const std::string storage = fieldStorageName(baseName, field.name);
+        const irs::IrType irFieldType = toIrType(field.type);
+        irs::Local local{storage, irFieldType};
+        fillArrayMeta(local, field.type);
+        const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
+        ctx.function.locals.push_back(std::move(local));
+        ctx.fieldSlots.emplace(fieldSlotKey(baseName, field.name), slot);
+    }
+}
+
+void declareRecordParamFields(LowerCtx &ctx, std::string_view paramName, const TypePtr &recordType,
+                              std::uint32_t paramSlot) {
+    (void)paramSlot;
+    declareRecordFields(ctx, paramName, recordType);
+}
+
+std::optional<ResolvedSlot> resolveFieldSlot(const LowerCtx &ctx, std::string_view baseName,
+                                             std::string_view fieldName) {
+    const auto found = ctx.fieldSlots.find(fieldSlotKey(baseName, fieldName));
+    if (found == ctx.fieldSlots.end()) {
+        return std::nullopt;
+    }
+    const std::uint32_t slot = found->second;
+    if (slot >= ctx.function.locals.size()) {
+        return std::nullopt;
+    }
+    return ResolvedSlot{makeLocalOperand(slot), ctx.function.locals[slot].type};
+}
+
+std::optional<ResolvedSlot> resolveArrayBaseSlot(LowerCtx &ctx, const ast::Expr &base) {
+    if (base.kind == ast::ExprKind::Identifier) {
+        return resolveSlot(ctx, foldAsciiLower(base.text));
+    }
+    if (base.kind == ast::ExprKind::Select && base.left &&
+        base.left->kind == ast::ExprKind::Identifier) {
+        return resolveFieldSlot(ctx, base.left->text, base.text);
+    }
+    return std::nullopt;
+}
+
 irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr);
 void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt);
+irs::ValueId emitLoad(LowerCtx &ctx, irs::Operand source, irs::IrType type);
+void emitStore(LowerCtx &ctx, irs::Operand dest, irs::ValueId value);
+
+void emitArrayCopy(LowerCtx &ctx, irs::Operand dest, irs::Operand src) {
+    irs::Instr instr;
+    instr.op = irs::Op::ArrayCopy;
+    instr.type = irs::IrType::Void;
+    instr.a = dest;
+    instr.b = src;
+    ctx.block.body.push_back(std::move(instr));
+}
+
+void copyRecordFields(LowerCtx &ctx, std::string_view destBase, std::string_view srcBase,
+                      const TypePtr &recordType) {
+    const TypePtr peeled = peelTypeAliases(recordType);
+    if (!peeled || peeled->tag != TypeTag::Record) {
+        return;
+    }
+    for (const RecordField &field : peeled->fields) {
+        const auto srcSlot = resolveFieldSlot(ctx, srcBase, field.name);
+        const auto destSlot = resolveFieldSlot(ctx, destBase, field.name);
+        if (!srcSlot || !destSlot) {
+            continue;
+        }
+        const TypePtr fieldType = field.type;
+        const irs::IrType irField = toIrType(fieldType);
+        const TypePtr fieldPeeled = peelTypeAliases(fieldType);
+        if (fieldPeeled && fieldPeeled->tag == TypeTag::Array) {
+            emitArrayCopy(ctx, destSlot->operand, srcSlot->operand);
+            continue;
+        }
+        const irs::ValueId value = emitLoad(ctx, srcSlot->operand, irField);
+        emitStore(ctx, destSlot->operand, value);
+    }
+}
 
 irs::ValueId emitConstI32(LowerCtx &ctx, std::int64_t value) {
     irs::Instr instr;
@@ -393,7 +495,8 @@ irs::IrType arrayElementType(const LowerCtx &ctx, const irs::Operand &operand) {
 
 /// Lower call arguments, widening each one the callee declared as `real`.
 std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &calleeName,
-                                        const std::vector<std::unique_ptr<ast::Expr>> &args) {
+                                        const std::vector<std::unique_ptr<ast::Expr>> &args,
+                                        std::vector<std::string> *matCopies) {
     const Symbol *callee = ctx.symbols.lookup(calleeName);
     std::vector<irs::ValueId> values;
     values.reserve(args.size());
@@ -402,8 +505,26 @@ std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &callee
             continue;
         }
         irs::IrType paramType = irs::IrType::Error;
+        bool isVar = false;
         if (callee && i < callee->paramTypes.size()) {
             paramType = toIrType(callee->paramTypes[i]);
+            isVar = i < callee->paramIsVar.size() && callee->paramIsVar[i];
+        }
+        if (paramType == irs::IrType::ArrayRef && !isVar) {
+            if (args[i]->kind != ast::ExprKind::Identifier) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "IR lowering: array argument must be a variable");
+                continue;
+            }
+            if (matCopies && callee && i < callee->paramNames.size()) {
+                const std::string dst =
+                    fieldStorageName(calleeName, callee->paramNames[i]);
+                const std::string src =
+                    fieldStorageName(ctx.function.name, args[i]->text);
+                matCopies->push_back(dst + "|" + src);
+            }
+            continue;
         }
         values.push_back(lowerExprFor(ctx, *args[i], paramType));
     }
@@ -411,7 +532,8 @@ std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &callee
 }
 
 irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
-                           std::vector<irs::ValueId> args, irs::IrType resultType) {
+                           std::vector<irs::ValueId> args, irs::IrType resultType,
+                           std::vector<std::string> matCopies) {
     irs::Instr call;
     call.op = irs::Op::Call;
     call.type = resultType;
@@ -420,6 +542,7 @@ irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
     }
     call.text = calleeName;
     call.args = std::move(args);
+    call.matCopies = std::move(matCopies);
     const irs::ValueId result = call.result;
     ctx.block.body.push_back(std::move(call));
     return result;
@@ -503,6 +626,12 @@ irs::ValueId lowerIdentifier(LowerCtx &ctx, const ast::Expr &expr) {
     if (const auto slot = resolveSlot(ctx, folded)) {
         return emitLoad(ctx, slot->operand, slot->type);
     }
+    if (ctx.recordVars.count(folded) != 0) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                               "IR lowering: cannot use a record variable as a whole value ('" +
+                                   expr.text + "')");
+        return emitConstI32(ctx, 0);
+    }
 
     const Symbol *symbol = ctx.symbols.lookup(expr.text);
     if (!symbol || symbol->kind == SymbolKind::Var || symbol->kind == SymbolKind::Param) {
@@ -534,7 +663,7 @@ irs::ValueId lowerIdentifier(LowerCtx &ctx, const ast::Expr &expr) {
     }
     case SymbolKind::Function:
         // Bare function identifier is a zero-argument call; M3 already checked arity.
-        return lowerUserCall(ctx, expr.text, {}, toIrType(symbol->type));
+        return lowerUserCall(ctx, expr.text, {}, toIrType(symbol->type), {});
     default:
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
                                "IR lowering: '" + expr.text + "' is not a value");
@@ -569,25 +698,42 @@ irs::ValueId lowerBinary(LowerCtx &ctx, const ast::Expr &expr) {
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
     // Builtins are statement-only per M3 (never valid as an expression), so a Call
     // Expr here is always a user function call.
-    return lowerUserCall(ctx, expr.text, lowerCallArgs(ctx, expr.text, expr.args),
-                         toIrType(expr.type));
+    std::vector<std::string> matCopies;
+    return lowerUserCall(ctx, expr.text,
+                         lowerCallArgs(ctx, expr.text, expr.args, &matCopies), toIrType(expr.type),
+                         std::move(matCopies));
 }
 
 irs::ValueId lowerIndexExpr(LowerCtx &ctx, const ast::Expr &expr) {
-    if (!expr.left || expr.left->kind != ast::ExprKind::Identifier) {
+    if (!expr.left) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "IR lowering: only identifier array bases are supported");
+                               "IR lowering: indexed expression missing base");
         return emitConstI32(ctx, 0);
     }
-    const auto slot = resolveSlot(ctx, foldAsciiLower(expr.left->text));
+    const auto slot = resolveArrayBaseSlot(ctx, *expr.left);
     if (!slot) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
-                               "IR lowering: array '" + expr.left->text + "' has no local slot");
+                               "IR lowering: array base has no storage slot");
         return emitConstI32(ctx, 0);
     }
     const irs::ValueId index =
         expr.right ? lowerExpr(ctx, *expr.right) : emitConstI32(ctx, 0);
     return emitLoadIndex(ctx, slot->operand, index, arrayElementType(ctx, slot->operand));
+}
+
+irs::ValueId lowerSelectExpr(LowerCtx &ctx, const ast::Expr &expr) {
+    if (!expr.left || expr.left->kind != ast::ExprKind::Identifier) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                               "IR lowering: field selection base must be a variable");
+        return emitConstI32(ctx, 0);
+    }
+    const auto slot = resolveFieldSlot(ctx, expr.left->text, expr.text);
+    if (!slot) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                               "IR lowering: record field '" + expr.text + "' has no slot");
+        return emitConstI32(ctx, 0);
+    }
+    return emitLoad(ctx, slot->operand, slot->type);
 }
 
 irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
@@ -624,6 +770,9 @@ irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
         break;
     case ast::ExprKind::Index:
         result = lowerIndexExpr(ctx, expr);
+        break;
+    case ast::ExprKind::Select:
+        result = lowerSelectExpr(ctx, expr);
         break;
     }
     return result;
@@ -684,15 +833,17 @@ void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
         return;
     }
 
-    std::vector<irs::ValueId> argValues = lowerCallArgs(ctx, stmt.name, stmt.args);
+    std::vector<std::string> matCopies;
+    std::vector<irs::ValueId> argValues =
+        lowerCallArgs(ctx, stmt.name, stmt.args, &matCopies);
 
     irs::IrType calleeReturnType = irs::IrType::Void;
     if (const Symbol *callee = ctx.symbols.lookup(stmt.name);
         callee && callee->kind == SymbolKind::Function) {
         calleeReturnType = toIrType(callee->type);
     }
-    // Result (if any) is discarded in statement context.
-    (void)lowerUserCall(ctx, stmt.name, std::move(argValues), calleeReturnType);
+    (void)lowerUserCall(ctx, stmt.name, std::move(argValues), calleeReturnType,
+                        std::move(matCopies));
 }
 
 void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
@@ -709,6 +860,36 @@ void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
         return;
     }
 
+    if (!stmt.fieldName.empty()) {
+        const auto destSlot = resolveFieldSlot(ctx, stmt.name, stmt.fieldName);
+        if (!destSlot) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "IR lowering: record field '" + stmt.fieldName +
+                                       "' has no slot");
+            return;
+        }
+        if (stmt.index) {
+            const irs::ValueId value = lowerValue(arrayElementType(ctx, destSlot->operand));
+            const irs::ValueId index = lowerExpr(ctx, *stmt.index);
+            emitStoreIndex(ctx, destSlot->operand, index, value);
+            return;
+        }
+        emitStore(ctx, destSlot->operand, lowerValue(destSlot->type));
+        return;
+    }
+
+    const auto recordIt = ctx.recordVars.find(folded);
+    if (recordIt != ctx.recordVars.end()) {
+        if (!stmt.index && stmt.value && stmt.value->kind == ast::ExprKind::Identifier) {
+            copyRecordFields(ctx, stmt.name, stmt.value->text, recordIt->second);
+            return;
+        }
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                               "IR lowering: whole-record assignment requires a record "
+                               "variable on the right-hand side");
+        return;
+    }
+
     const auto slot = resolveSlot(ctx, folded);
     if (!slot) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
@@ -720,6 +901,17 @@ void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
         const irs::ValueId value = lowerValue(arrayElementType(ctx, slot->operand));
         const irs::ValueId index = lowerExpr(ctx, *stmt.index);
         emitStoreIndex(ctx, slot->operand, index, value);
+        return;
+    }
+    if (slot->type == irs::IrType::ArrayRef && stmt.value &&
+        stmt.value->kind == ast::ExprKind::Identifier) {
+        const auto srcSlot = resolveSlot(ctx, foldAsciiLower(stmt.value->text));
+        if (!srcSlot || srcSlot->type != irs::IrType::ArrayRef) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "IR lowering: array copy requires an array variable source");
+            return;
+        }
+        emitArrayCopy(ctx, slot->operand, srcSlot->operand);
         return;
     }
     emitStore(ctx, slot->operand, lowerValue(slot->type));
@@ -863,8 +1055,14 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
     }
     for (const auto &decl : block.vars) {
         const TypePtr localType = denoterType(ctx, decl.type);
-        const irs::IrType irLocalType = toIrType(localType);
+        const TypePtr peeled = peelTypeAliases(localType);
         for (const auto &name : decl.names) {
+            if (peeled && peeled->tag == TypeTag::Record) {
+                ctx.recordVars.emplace(foldAsciiLower(name), localType);
+                declareRecordFields(ctx, name, localType);
+                continue;
+            }
+            const irs::IrType irLocalType = toIrType(localType);
             const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
             irs::Local local{name, irLocalType};
             fillArrayMeta(local, localType);
@@ -875,6 +1073,21 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
 }
 
 void emitArrayDims(LowerCtx &ctx) {
+    for (std::uint32_t i = 0; i < ctx.function.params.size(); ++i) {
+        const irs::Param &param = ctx.function.params[i];
+        if (param.type != irs::IrType::ArrayRef || !param.arrayLow || !param.arrayHigh) {
+            continue;
+        }
+        const std::int64_t size = *param.arrayHigh - *param.arrayLow + 1;
+        if (size < 1) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   apollo::common::SourceLocation{},
+                                   "IR lowering: array parameter '" + param.name +
+                                       "' has an empty range");
+            continue;
+        }
+        emitDimArray(ctx, makeParamOperand(i), size, param.arrayElement);
+    }
     for (std::uint32_t i = 0; i < ctx.function.locals.size(); ++i) {
         const irs::Local &local = ctx.function.locals[i];
         if (local.type != irs::IrType::ArrayRef || !local.arrayLow || !local.arrayHigh) {
@@ -901,8 +1114,17 @@ irs::Function lowerFunctionCore(const SymbolTable &symbols,
     function.name = std::move(functionName);
     function.returnType = returnType;
 
-    LowerCtx ctx{symbols, diagnostics, function, irs::BasicBlock{"entry"}, {}, {}, {}, 0,
-                resultName, {}};
+    LowerCtx ctx{symbols,     diagnostics,
+                 function,
+                 irs::BasicBlock{"entry"},
+                 {},
+                 {},
+                 {},
+                 {},
+                 {},
+                 0,
+                 resultName,
+                 {}};
 
     if (params) {
         for (const auto &param : *params) {

@@ -17,6 +17,7 @@ Sample Pascal programs for Apollo. Each file is self-contained and should pass
 | [`ifelse.pas`](ifelse.pas) | `if` … `then` … `else` | `positive` |
 | [`while.pas`](while.pas) | `while` | `3`, `2`, `1` |
 | [`repeat.pas`](repeat.pas) | `repeat` … `until` | `1`, `2`, `3` |
+| [`point.pas`](point.pas) | `record`, field select, whole-record assign | `3` |
 
 ## Compile and run
 

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace apollo::pascal {
 
@@ -21,7 +22,17 @@ enum class TypeTag {
     String,
     Alias,
     Array,
+    Record,
     Error,
+};
+
+struct Type;
+
+using TypePtr = std::shared_ptr<Type>;
+
+struct RecordField {
+    std::string name;
+    TypePtr type;
 };
 
 struct Type {
@@ -34,13 +45,13 @@ struct Type {
     std::int64_t indexLow{0};
     std::int64_t indexHigh{0};
     bool hasBounds{false};
+    std::vector<RecordField> fields;
 };
-
-using TypePtr = std::shared_ptr<Type>;
 
 [[nodiscard]] TypePtr makePredefined(TypeTag tag);
 [[nodiscard]] TypePtr makeAlias(std::string name, TypePtr underlying);
 [[nodiscard]] TypePtr makeArray(TypePtr element, std::int64_t indexLow, std::int64_t indexHigh);
+[[nodiscard]] TypePtr makeRecord(std::vector<RecordField> fields);
 [[nodiscard]] TypePtr makeError();
 
 /// Peel Alias layers; returns Error if type is null.

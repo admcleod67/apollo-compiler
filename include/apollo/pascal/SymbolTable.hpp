@@ -38,6 +38,7 @@ struct Symbol {
     bool isVarParam{false};
     /// Procedure/Function formal parameter types (outermost to last).
     std::vector<TypePtr> paramTypes;
+    std::vector<std::string> paramNames;
     std::vector<bool> paramIsVar;
     /// For Const: pointer into the owning AST initializer (not owned).
     const ast::Expr *constExpr{nullptr};

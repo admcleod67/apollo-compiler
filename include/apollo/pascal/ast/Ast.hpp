@@ -51,6 +51,7 @@ enum class ExprKind {
     Call,
     Group,
     Index,
+    Select,
 };
 
 struct Expr {
@@ -70,6 +71,14 @@ struct Expr {
 enum class TypeKind {
     Named,
     Array,
+    Record,
+};
+
+struct TypeDenoter;
+
+struct RecordFieldDecl {
+    std::vector<std::string> names;
+    std::unique_ptr<TypeDenoter> type;
 };
 
 struct TypeDenoter {
@@ -79,6 +88,7 @@ struct TypeDenoter {
     std::unique_ptr<Expr> indexLow;
     std::unique_ptr<Expr> indexHigh;
     std::unique_ptr<TypeDenoter> element;
+    std::vector<RecordFieldDecl> fields;
     /// Filled by semantic analyse; null until then.
     apollo::pascal::TypePtr resolved;
 };
@@ -137,6 +147,8 @@ struct Stmt {
     std::string name;
     /// When set on Assign, LHS is `name[index]` rather than a bare variable.
     std::unique_ptr<Expr> index;
+    /// When non-empty on Assign, LHS is `name.field` (optional `index` on the field).
+    std::string fieldName;
     std::unique_ptr<Expr> value;
     std::vector<std::unique_ptr<Expr>> args;
     std::vector<Stmt> statements;

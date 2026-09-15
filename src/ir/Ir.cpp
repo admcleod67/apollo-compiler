@@ -11,6 +11,7 @@ bool producesValue(const Instr &instr) {
     case Op::StoreLocal:
     case Op::StoreIndex:
     case Op::DimArray:
+    case Op::ArrayCopy:
         return false;
     case Op::Call:
     case Op::CallRuntime:

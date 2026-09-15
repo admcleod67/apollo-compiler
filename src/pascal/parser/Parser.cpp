@@ -90,6 +90,7 @@ std::optional<ast::BinaryOp> relationalOp(TokenKind kind) {
 std::unique_ptr<ast::Expr> parseExpression(TokenCursor &cursor);
 std::unique_ptr<ast::Expr> parseFactor(TokenCursor &cursor);
 ast::TypeDenoter parseTypeDenoter(TokenCursor &cursor);
+std::vector<std::string> parseIdentList(TokenCursor &cursor);
 ast::Block parseBlock(TokenCursor &cursor);
 ast::Stmt parseStatement(TokenCursor &cursor);
 
@@ -204,8 +205,24 @@ std::unique_ptr<ast::Expr> parseFactor(TokenCursor &cursor) {
         expr->kind = ast::ExprKind::Index;
         expr->left = std::move(primary);
         expr->right = std::move(index);
-        expr->range = spanRanges(expr->left ? expr->left->range : tok.range, closeTok.range);
+        expr->range = spanRanges(expr->left->range, closeTok.range);
         primary = std::move(expr);
+    }
+
+    while (cursor.check(TokenKind::Dot)) {
+        const Token &dotTok = cursor.current();
+        cursor.advance();
+        if (!cursor.check(TokenKind::Identifier)) {
+            (void)cursor.expect(TokenKind::Identifier, "expected field name after '.'");
+            break;
+        }
+        auto select = std::make_unique<ast::Expr>();
+        select->kind = ast::ExprKind::Select;
+        select->left = std::move(primary);
+        select->text = std::string(cursor.current().lexeme);
+        select->range = spanRanges(dotTok.range, cursor.current().range);
+        cursor.advance();
+        primary = std::move(select);
     }
 
     return primary;
@@ -306,6 +323,29 @@ ast::TypeDenoter parseTypeDenoter(TokenCursor &cursor) {
         } else {
             type.range = start.range;
         }
+        return type;
+    }
+
+    if (cursor.match(TokenKind::KeywordRecord)) {
+        type.kind = ast::TypeKind::Record;
+        type.range = start.range;
+        while (!cursor.check(TokenKind::KeywordEnd) && !cursor.check(TokenKind::EndOfFile)) {
+            ast::RecordFieldDecl fieldDecl;
+            fieldDecl.names = parseIdentList(cursor);
+            (void)cursor.expect(TokenKind::Colon, "expected ':' after record field name");
+            fieldDecl.type = std::make_unique<ast::TypeDenoter>(parseTypeDenoter(cursor));
+            const Token &semi = cursor.current();
+            (void)cursor.expect(TokenKind::Semicolon, "expected ';' after record field");
+            if (fieldDecl.type) {
+                type.range = spanRanges(type.range, fieldDecl.type->range);
+            } else {
+                type.range = spanRanges(type.range, semi.range);
+            }
+            type.fields.push_back(std::move(fieldDecl));
+        }
+        const Token &endTok = cursor.current();
+        (void)cursor.expect(TokenKind::KeywordEnd, "expected 'end' after record fields");
+        type.range = spanRanges(type.range, endTok.range);
         return type;
     }
 
@@ -601,6 +641,34 @@ ast::Stmt parseStatement(TokenCursor &cursor) {
             (void)cursor.expect(TokenKind::RightBracket, "expected ']' after index");
             stmt.range = spanRanges(nameTok.range, closeTok.range);
             if (!cursor.expect(TokenKind::Assign, "expected ':=' after indexed variable")) {
+                syncStatement(cursor);
+                stmt.kind = ast::StmtKind::Assign;
+                return stmt;
+            }
+            stmt.kind = ast::StmtKind::Assign;
+            stmt.value = parseExpression(cursor);
+            if (stmt.value) {
+                stmt.range = spanRanges(nameTok.range, stmt.value->range);
+            }
+            return stmt;
+        }
+
+        if (cursor.match(TokenKind::Dot)) {
+            if (!cursor.check(TokenKind::Identifier)) {
+                (void)cursor.expect(TokenKind::Identifier, "expected field name after '.'");
+                syncStatement(cursor);
+                stmt.kind = ast::StmtKind::Assign;
+                return stmt;
+            }
+            stmt.fieldName = std::string(cursor.current().lexeme);
+            cursor.advance();
+            if (cursor.match(TokenKind::LeftBracket)) {
+                stmt.index = parseExpression(cursor);
+                const Token &closeTok = cursor.current();
+                (void)cursor.expect(TokenKind::RightBracket, "expected ']' after index");
+                stmt.range = spanRanges(nameTok.range, closeTok.range);
+            }
+            if (!cursor.expect(TokenKind::Assign, "expected ':=' after field designator")) {
                 syncStatement(cursor);
                 stmt.kind = ast::StmtKind::Assign;
                 return stmt;

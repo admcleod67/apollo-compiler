@@ -447,5 +447,62 @@ int main() {
         }
     }
 
+    // Whole-array assign lowers to MAT_COPY.
+    {
+        ScanAnalyseLowerEmit run("matcopy.pas",
+                                 "program MatCopy;\n"
+                                 "var\n"
+                                 "  a, b: array [1..2] of integer;\n"
+                                 "begin\n"
+                                 "  a := b;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("whole-array assign should emit");
+        }
+        if (!contains(run.tbc, "MAT_COPY main$a|main$b")) {
+            return fail("whole-array assign should emit MAT_COPY");
+        }
+    }
+
+    // Value array parameter: call site MAT_COPY, callee formal not loaded from stack.
+    {
+        ScanAnalyseLowerEmit run("arrparam.pas",
+                                 "program ArrParam;\n"
+                                 "var\n"
+                                 "  src: array [1..2] of integer;\n"
+                                 "procedure bump(a: array [1..2] of integer);\n"
+                                 "begin\n"
+                                 "  a[1] := 0;\n"
+                                 "end;\n"
+                                 "begin\n"
+                                 "  bump(src);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("array value parameter should emit");
+        }
+        if (!contains(run.tbc, "MAT_COPY bump$a|main$src")) {
+            return fail("array argument should MAT_COPY into callee formal");
+        }
+    }
+
+    // Record fields use fn$base$field mangling.
+    {
+        ScanAnalyseLowerEmit run("recfield.pas",
+                                 "program RecField;\n"
+                                 "type\n"
+                                 "  point = record x, y: integer; end;\n"
+                                 "var\n"
+                                 "  p: point;\n"
+                                 "begin\n"
+                                 "  p.x := 2;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("record field store should emit");
+        }
+        if (!contains(run.tbc, "main$p$x")) {
+            return fail("record field should mangle as main$p$x");
+        }
+    }
+
     return 0;
 }

@@ -68,6 +68,17 @@ void dumpType(std::ostream &out, const ast::TypeDenoter &type, int depth) {
         out << "NamedType " << type.name << '\n';
         return;
     }
+    if (type.kind == ast::TypeKind::Record) {
+        out << "RecordType\n";
+        for (const auto &field : type.fields) {
+            for (const auto &fieldName : field.names) {
+                indent(out, depth + 1);
+                out << "Field " << fieldName << '\n';
+                dumpType(out, *field.type, depth + 2);
+            }
+        }
+        return;
+    }
     out << "ArrayType\n";
     if (type.indexLow) {
         indent(out, depth + 1);
@@ -148,6 +159,14 @@ void dumpExpr(std::ostream &out, const ast::Expr &expr, int depth) {
             dumpExpr(out, *expr.right, depth + 2);
         }
         break;
+    case ast::ExprKind::Select:
+        out << "SelectExpr " << expr.text << '\n';
+        if (expr.left) {
+            indent(out, depth + 1);
+            out << "Base\n";
+            dumpExpr(out, *expr.left, depth + 2);
+        }
+        break;
     }
 }
 
@@ -187,7 +206,11 @@ void dumpStmt(std::ostream &out, const ast::Stmt &stmt, int depth) {
         }
         break;
     case ast::StmtKind::Assign:
-        out << "AssignStmt " << stmt.name << '\n';
+        out << "AssignStmt " << stmt.name;
+        if (!stmt.fieldName.empty()) {
+            out << '.' << stmt.fieldName;
+        }
+        out << '\n';
         if (stmt.index) {
             indent(out, depth + 1);
             out << "Index\n";

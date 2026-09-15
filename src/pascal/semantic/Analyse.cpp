@@ -73,10 +73,50 @@ bool isAssignable(const TypePtr &dest, const TypePtr &src) {
     if (d->tag == TypeTag::Array && s->tag == TypeTag::Array) {
         return isAssignable(d->element, s->element);
     }
+    if (d->tag == TypeTag::Record && s->tag == TypeTag::Record) {
+        if (d->fields.size() != s->fields.size()) {
+            return false;
+        }
+        for (std::size_t i = 0; i < d->fields.size(); ++i) {
+            if (foldAsciiLower(d->fields[i].name) != foldAsciiLower(s->fields[i].name)) {
+                return false;
+            }
+            if (!isAssignable(d->fields[i].type, s->fields[i].type)) {
+                return false;
+            }
+        }
+        return true;
+    }
     if (d->tag == s->tag) {
         return true;
     }
     return d->tag == TypeTag::Real && s->tag == TypeTag::Integer;
+}
+
+bool arrayTypesSameShape(const TypePtr &dest, const TypePtr &src) {
+    const TypePtr d = peelAliases(dest);
+    const TypePtr s = peelAliases(src);
+    if (!d || !s || d->tag != TypeTag::Array || s->tag != TypeTag::Array) {
+        return false;
+    }
+    if (!d->hasBounds || !s->hasBounds) {
+        return false;
+    }
+    return d->indexLow == s->indexLow && d->indexHigh == s->indexHigh &&
+           isAssignable(d->element, s->element);
+}
+
+const RecordField *findRecordField(const TypePtr &recordType, std::string_view fieldName) {
+    const TypePtr peeled = peelAliases(recordType);
+    if (!peeled || peeled->tag != TypeTag::Record) {
+        return nullptr;
+    }
+    for (const RecordField &field : peeled->fields) {
+        if (foldAsciiLower(field.name) == foldAsciiLower(fieldName)) {
+            return &field;
+        }
+    }
+    return nullptr;
 }
 
 bool isPrintable(TypeTag tag) {
@@ -165,6 +205,26 @@ std::optional<std::int64_t> evalConstInt(SymbolTable &table, const ast::Expr *ex
 
 TypePtr resolveDenoterImpl(SymbolTable &table, ast::TypeDenoter &denoter,
                            apollo::common::DiagnosticEngine &diagnostics) {
+    if (denoter.kind == ast::TypeKind::Record) {
+        std::vector<RecordField> fields;
+        for (auto &fieldDecl : denoter.fields) {
+            if (!fieldDecl.type) {
+                continue;
+            }
+            TypePtr fieldType = resolveDenoter(table, *fieldDecl.type, diagnostics);
+            if (canonicalTag(fieldType) == TypeTag::Record) {
+                diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   fieldDecl.type->range.begin,
+                                   "nested record types are not supported");
+                fieldType = makeError();
+            }
+            for (const auto &name : fieldDecl.names) {
+                fields.push_back(RecordField{name, fieldType});
+            }
+        }
+        return makeRecord(std::move(fields));
+    }
+
     if (denoter.kind == ast::TypeKind::Array) {
         if (!denoter.element) {
             return makeError();
@@ -340,10 +400,32 @@ void checkUserCallArgs(AnalyseCtx &ctx, const Symbol &callee,
                                        "var parameter requires a variable");
                 continue;
             }
+            if (canonicalTag(paramType) == TypeTag::Array) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "var array parameters are not supported yet");
+                continue;
+            }
             if (!isAssignable(paramType, args[i]->type)) {
                 ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
                                        args[i]->range.begin,
                                        "argument type incompatible with parameter");
+            }
+        } else if (canonicalTag(paramType) == TypeTag::Array) {
+            if (args[i]->kind != ast::ExprKind::Identifier) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "array argument must be a variable");
+                continue;
+            }
+            if (!isAssignable(paramType, args[i]->type)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "argument type incompatible with parameter");
+            } else if (!arrayTypesSameShape(paramType, args[i]->type)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[i]->range.begin,
+                                       "array argument bounds must match the parameter");
             }
         } else if (!isAssignable(paramType, args[i]->type)) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
@@ -558,6 +640,29 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
         }
         break;
 
+    case ast::ExprKind::Select: {
+        TypePtr baseType = makeError();
+        if (expr.left) {
+            baseType = typeExpr(ctx, *expr.left);
+        }
+        const TypePtr peeled = peelAliases(baseType);
+        if (!isError(baseType) && (!peeled || peeled->tag != TypeTag::Record)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                                   "field selection requires a record");
+            result = makeError();
+            break;
+        }
+        const RecordField *field = findRecordField(baseType, expr.text);
+        if (!isError(baseType) && !field) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                                   "record has no field '" + expr.text + "'");
+            result = makeError();
+            break;
+        }
+        result = field && field->type ? field->type : makeError();
+        break;
+    }
+
     case ast::ExprKind::Index: {
         TypePtr baseType = makeError();
         TypePtr indexType = makeError();
@@ -617,7 +722,36 @@ void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
         return;
     }
 
-    if (stmt.index) {
+    if (!stmt.fieldName.empty()) {
+        const TypePtr peeled = peelAliases(destType);
+        if (!isError(destType) && (!peeled || peeled->tag != TypeTag::Record)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "field assignment requires a record variable");
+            return;
+        }
+        const RecordField *field = findRecordField(destType, stmt.fieldName);
+        if (!isError(destType) && !field) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                   "record has no field '" + stmt.fieldName + "'");
+            return;
+        }
+        destType = field && field->type ? field->type : makeError();
+        if (stmt.index) {
+            TypePtr indexType = typeExpr(ctx, *stmt.index);
+            if (!isError(indexType) && canonicalTag(indexType) != TypeTag::Integer) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       stmt.index->range.begin, "array index must be integer");
+            }
+            const TypePtr fieldPeeled = peelAliases(destType);
+            if (!isError(destType) && (!fieldPeeled || fieldPeeled->tag != TypeTag::Array)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       stmt.range.begin,
+                                       "indexed assignment requires an array field");
+                return;
+            }
+            destType = fieldPeeled && fieldPeeled->element ? fieldPeeled->element : makeError();
+        }
+    } else if (stmt.index) {
         TypePtr indexType = typeExpr(ctx, *stmt.index);
         if (!isError(indexType) && canonicalTag(indexType) != TypeTag::Integer) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
@@ -638,8 +772,17 @@ void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
                                        "incompatible types in assignment");
                 return;
             }
-            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
-                                   "whole-array assignment not supported yet");
+            if (!arrayTypesSameShape(destType, rhsType)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                       "array assignment requires matching bounds");
+            }
+            return;
+        }
+        if (peeled && peeled->tag == TypeTag::Record) {
+            if (!isAssignable(destType, rhsType)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                       "incompatible record types in assignment");
+            }
             return;
         }
     }
@@ -753,6 +896,11 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
                                    sub.returnType->range.begin,
                                    "function result type must be a simple type");
         }
+        if (canonicalTag(returnType) == TypeTag::Record) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   sub.returnType->range.begin,
+                                   "function result type must be a simple type");
+        }
     }
 
     const SymbolKind kind = sub.isFunction ? SymbolKind::Function : SymbolKind::Procedure;
@@ -763,17 +911,22 @@ void walkSubprogram(AnalyseCtx &ctx, ast::Subprogram &sub) {
     ctx.table.pushScope();
     for (auto &param : sub.params) {
         TypePtr paramType = resolveDenoter(ctx.table, param.type, ctx.diagnostics);
-        // Gemini keeps arrays in a separate store from scalars, so passing one through a
-        // param slot would emit a LOAD_VAR of a name that holds no value. Stage 2 adds
-        // real support via MAT_COPY; until then the param is still declared so the body
-        // does not cascade "undeclared identifier".
-        if (canonicalTag(paramType) == TypeTag::Array) {
+        if (param.isVar && canonicalTag(paramType) == TypeTag::Array) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, param.range.begin,
-                                   "array parameters not supported yet");
+                                   "var array parameters are not supported yet");
+        }
+        if (param.isVar && canonicalTag(paramType) == TypeTag::Record) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, param.range.begin,
+                                   "var record parameters are not supported yet");
+        }
+        if (!param.isVar && canonicalTag(paramType) == TypeTag::Record) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, param.range.begin,
+                                   "record parameters are not supported yet");
         }
         if (subSym) {
             for (std::size_t i = 0; i < param.names.size(); ++i) {
                 subSym->paramTypes.push_back(paramType);
+                subSym->paramNames.push_back(param.names[i]);
                 subSym->paramIsVar.push_back(param.isVar);
             }
         }

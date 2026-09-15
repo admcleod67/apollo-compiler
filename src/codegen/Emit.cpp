@@ -370,9 +370,18 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
     ctx.fail("codegen: unknown runtime call '" + name + "'");
 }
 
+void emitArrayCopy(EmitCtx &ctx, const irs::Instr &instr) {
+    const std::string dest = slotName(ctx.function, instr.a);
+    const std::string src = slotName(ctx.function, instr.b);
+    ctx.writer.op("MAT_COPY", dest + "|" + src);
+}
+
 /// Push args left-to-right, CALL callee; spill non-void result.
 void emitUserCall(EmitCtx &ctx, const irs::Instr &instr) {
     spillStackTop(ctx);
+    for (const std::string &copy : instr.matCopies) {
+        ctx.writer.op("MAT_COPY", copy);
+    }
     for (const irs::ValueId arg : instr.args) {
         if (ctx.spilled.count(arg.id) == 0) {
             ctx.fail("codegen: call argument %" + std::to_string(arg.id) + " unavailable");
@@ -451,6 +460,9 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
     case irs::Op::DimArray:
         emitDimArray(ctx, instr);
         break;
+    case irs::Op::ArrayCopy:
+        emitArrayCopy(ctx, instr);
+        break;
     case irs::Op::LoadIndex:
         emitLoadIndex(ctx, instr);
         spillStackTop(ctx);
@@ -506,6 +518,9 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
 void emitParamPrologue(EmitCtx &ctx) {
     // Caller pushed args left-to-right; top of stack is the last param.
     for (auto it = ctx.function.params.rbegin(); it != ctx.function.params.rend(); ++it) {
+        if (it->type == irs::IrType::ArrayRef) {
+            continue;
+        }
         ctx.writer.op("STORE_VAR", mangleSlot(ctx.function.name, it->name));
     }
 }

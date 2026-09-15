@@ -260,6 +260,21 @@ have been rewritten twice.
   which only diagnoses them — see D4).
 - Not a commitment to `file of record` in M7 — see **Why Pascal `file` I/O waits** above.
 
+**Layout / lowering (pinned):**
+
+- Record variable `p` with fields `x`, `y` → scalar slots `fn$p$x`, `fn$p$y` (same `$`
+  separator as locals; no VM aggregate).
+- Array record fields dimension `fn$p$field` like ordinary array locals.
+- Whole-record assign `q := p` copies fields pairwise; array fields use `MAT_COPY`.
+- Whole-array assign `a := b` and **value** array parameters emit `MAT_COPY dst|src` at the
+  call site; callee skips `STORE_VAR` for array formals and runs `DIM_ARRAY` on the formal
+  name in its prologue.
+
+**Explicit non-goals (Stage 2):** nested record field types; `var` array parameters; record
+parameters; record or array function results; `file of record`.
+
+**Status:** completed.
+
 ### Stage 3 — `case` + nesting polish (M7c)
 
 **Objective:** Control-flow and subprogram completeness for console programs.
@@ -288,7 +303,7 @@ have been rewritten twice.
   either supported or diagnosed (Stage 1 follow-up **1a**).
 - [x] `real` and `mod` no longer hard-fail in codegen for the supported subset.
 - [x] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
-- [ ] Flat `record` field access emits and runs.
+- [x] Flat `record` field access emits and runs.
 - [ ] `case` on ordinal types emits and runs.
 - [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
 - [ ] README documents the supported Wirth console / Pascal80-style dialect and explicit
@@ -303,7 +318,7 @@ have been rewritten twice.
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Scalar / array debt | completed |
-| Stage 2 — Records | not started |
+| Stage 2 — Records | completed |
 | Stage 3 — `case` + nesting | not started |
 | Stage 4 — `{$I}` + dialect close-out | not started |
 

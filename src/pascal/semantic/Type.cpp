@@ -49,6 +49,13 @@ TypePtr makeArray(TypePtr element, std::int64_t indexLow, std::int64_t indexHigh
     return type;
 }
 
+TypePtr makeRecord(std::vector<RecordField> fields) {
+    auto type = std::make_shared<Type>();
+    type->tag = TypeTag::Record;
+    type->fields = std::move(fields);
+    return type;
+}
+
 TypePtr makeError() {
     auto type = std::make_shared<Type>();
     type->tag = TypeTag::Error;

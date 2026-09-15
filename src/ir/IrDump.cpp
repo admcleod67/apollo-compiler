@@ -55,6 +55,8 @@ const char *opName(Op op) {
         return "store.local";
     case Op::DimArray:
         return "dim.array";
+    case Op::ArrayCopy:
+        return "array.copy";
     case Op::LoadIndex:
         return "load.index";
     case Op::StoreIndex:
@@ -162,6 +164,12 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         dumpOperand(out, instr.a);
         out << ", size " << instr.i64;
         break;
+    case Op::ArrayCopy:
+        out << ' ';
+        dumpOperand(out, instr.a);
+        out << ", ";
+        dumpOperand(out, instr.b);
+        break;
     case Op::LoadIndex:
         out << ' ';
         dumpOperand(out, instr.a);
@@ -198,6 +206,9 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         break;
     case Op::Call:
         out << ' ' << instr.text;
+        for (const std::string &copy : instr.matCopies) {
+            out << " mat_copy[" << copy << ']';
+        }
         for (const ValueId arg : instr.args) {
             out << ", ";
             dumpValue(out, arg);

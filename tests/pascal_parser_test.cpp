@@ -348,5 +348,29 @@ int main() {
         }
     }
 
+    // flat record type and field select
+    {
+        ScanParse run("rec.pas",
+                      "program P;\n"
+                      "type\n"
+                      "  point = record x, y: integer; end;\n"
+                      "var\n"
+                      "  p: point;\n"
+                      "begin\n"
+                      "  p.x := 1;\n"
+                      "end.\n");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("record fixture should parse");
+        }
+        if (run.program->block.types.size() != 1 ||
+            run.program->block.types[0].type.kind != apollo::pascal::ast::TypeKind::Record) {
+            return fail("record type denoter missing");
+        }
+        const auto &stmt = run.program->block.body.statements[0];
+        if (stmt.kind != StmtKind::Assign || stmt.fieldName != "x" || stmt.name != "p") {
+            return fail("field assign AST mismatch");
+        }
+    }
+
     return 0;
 }
