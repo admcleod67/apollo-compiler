@@ -206,8 +206,8 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         break;
     case Op::Call:
         out << ' ' << instr.text;
-        for (const std::string &copy : instr.matCopies) {
-            out << " mat_copy[" << copy << ']';
+        for (const ArrayCopySetup &copy : instr.matCopies) {
+            out << " array_copy[" << copy.dst << '|' << copy.src << " size " << copy.size << ']';
         }
         for (const ValueId arg : instr.args) {
             out << ", ";

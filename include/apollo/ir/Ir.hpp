@@ -84,6 +84,14 @@ struct Operand {
     std::uint32_t slot{0};
 };
 
+/// Call-site setup for a value array argument: dim + init + copy into the callee formal.
+struct ArrayCopySetup {
+    std::string dst;
+    std::string src;
+    std::int64_t size{0};
+    IrType element{IrType::Error};
+};
+
 struct Instr {
     Op op{};
     IrType type{IrType::Error};
@@ -97,8 +105,8 @@ struct Instr {
     bool boolean{false};
     char character{'\0'};
     std::vector<ValueId> args;
-    /// For `Call`: `MAT_COPY` pairs as `dst|src` mangled names, emitted before `CALL`.
-    std::vector<std::string> matCopies;
+    /// For `Call`: dim/init/copy each value array formal before `CALL`.
+    std::vector<ArrayCopySetup> matCopies;
 };
 
 /// True when `instr.result` is a live SSA binding. Void stores, `DimArray`, and

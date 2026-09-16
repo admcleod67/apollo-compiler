@@ -44,22 +44,24 @@ dialect claim.
 Apollo already has a strong **procedural skeleton**:
 
 - `program`, `const` / `type` / `var`, top-level `procedure` / `function`
-- `integer` / `boolean` / `char` / string literals; type aliases; array *denoters*
-- Compound, assign, call, `if` / `while` / `repeat` / `for`
+- `integer` / `boolean` / `char` / `real` / string literals; type aliases; arrays
+- Flat `record` types and field select; whole-record and whole-array assign
+- Compound, assign, call, `if` / `while` / `repeat` / `for` / `case`
 - Console builtins `write` / `writeln` / `read` / `readln`
-- End-to-end emit for hello/count-style programs
+- `{$I}` / `{$i}` include directives (unknown `{$…}` → warning)
+- End-to-end emit for hello/count-style programs and Stage fixtures
 
-Major Wirth gaps (not yet end-to-end):
+Wirth surface still deferred or diagnosed:
 
 | Area | Status |
 |------|--------|
-| Array **indexing** `a[i]` | Stage 1 + **1a**: all const bound forms; array params diagnosed |
-| `real` / `mod` through emit | Stage 1 + **1b**: `PUSH_FLT`, mod sequence, `Integer` widening |
-| `record` / field select | Keywords reserved; not in grammar |
-| `case` | Keyword reserved; not in grammar |
-| Nested procs with up-level locals | Parsed; lowering diagnoses |
+| Array **indexing** `a[i]` | Implemented (const bounds; value array params via call-site copy) |
+| `real` / `mod` through emit | Implemented (`PUSH_FLT`, mod sequence, `Integer` widening) |
+| `record` / field select | Implemented (flat only; nested field types diagnosed) |
+| `case` | Implemented (ordinal selector; linear compare / `BranchIf` chain) |
+| Nested procs with up-level locals | Diagnosed (top-level subprograms only) |
 | Sets, pointers, `file`, `goto`/`with` | Out / diagnose / keywords only |
-| Compiler directives / `{$I}` | `{...}` is comment-only today |
+| Compiler directives beyond `{$I}` | Unknown `{$…}` warn; richer directives deferred |
 
 ---
 
@@ -265,10 +267,15 @@ have been rewritten twice.
 - Record variable `p` with fields `x`, `y` → scalar slots `fn$p$x`, `fn$p$y` (same `$`
   separator as locals; no VM aggregate).
 - Array record fields dimension `fn$p$field` like ordinary array locals.
-- Whole-record assign `q := p` copies fields pairwise; array fields use `MAT_COPY`.
-- Whole-array assign `a := b` and **value** array parameters emit `MAT_COPY dst|src` at the
-  call site; callee skips `STORE_VAR` for array formals and runs `DIM_ARRAY` on the formal
-  name in its prologue.
+- Whole-record assign `q := p` copies fields pairwise; array fields use `MAT_COPY` and
+  require matching bounds (structural assignability + `arrayTypesSameShape` per array field).
+- Whole-array assign `a := b` emits `MAT_COPY dst|src`.
+- **Value array parameters (calling convention):** before `CALL`, the caller emits
+  `DIM_ARRAY` formal → `MAT_INIT` formal → `MAT_COPY formal|actual` (Gemini requires the
+  destination array to exist, and re-dimming wipes contents). The callee does **not**
+  `DIM_ARRAY` / `MAT_INIT` array parameters in its entry prologue (locals only). Array
+  formals are still skipped by the scalar param `STORE_VAR` prologue. Names use declaration
+  spellings (`Symbol::name` / param and local declared names), not call-site identifier case.
 
 **Explicit non-goals (Stage 2):** nested record field types; `var` array parameters; record
 parameters; record or array function results; `file of record`.

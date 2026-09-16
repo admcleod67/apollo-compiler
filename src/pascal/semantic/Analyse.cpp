@@ -66,6 +66,8 @@ TypePtr peelAliases(TypePtr type) {
     return type;
 }
 
+bool arrayTypesSameShape(const TypePtr &dest, const TypePtr &src);
+
 bool isAssignable(const TypePtr &dest, const TypePtr &src) {
     if (isError(dest) || isError(src)) {
         return true;
@@ -85,6 +87,14 @@ bool isAssignable(const TypePtr &dest, const TypePtr &src) {
         for (std::size_t i = 0; i < d->fields.size(); ++i) {
             if (foldAsciiLower(d->fields[i].name) != foldAsciiLower(s->fields[i].name)) {
                 return false;
+            }
+            const TypePtr df = peelAliases(d->fields[i].type);
+            const TypePtr sf = peelAliases(s->fields[i].type);
+            if (df && sf && df->tag == TypeTag::Array && sf->tag == TypeTag::Array) {
+                if (!arrayTypesSameShape(d->fields[i].type, s->fields[i].type)) {
+                    return false;
+                }
+                continue;
             }
             if (!isAssignable(d->fields[i].type, s->fields[i].type)) {
                 return false;
@@ -224,6 +234,20 @@ TypePtr resolveDenoterImpl(SymbolTable &table, ast::TypeDenoter &denoter,
                 fieldType = makeError();
             }
             for (const auto &name : fieldDecl.names) {
+                const std::string folded = foldAsciiLower(name);
+                bool duplicate = false;
+                for (const RecordField &existing : fields) {
+                    if (foldAsciiLower(existing.name) == folded) {
+                        diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           denoter.range.begin,
+                                           "duplicate record field '" + name + "'");
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (duplicate) {
+                    continue;
+                }
                 fields.push_back(RecordField{name, fieldType});
             }
         }
@@ -959,6 +983,30 @@ void checkAssign(AnalyseCtx &ctx, ast::Stmt &stmt) {
                 return;
             }
             destType = fieldPeeled && fieldPeeled->element ? fieldPeeled->element : makeError();
+        } else {
+            const TypePtr fieldPeeled = peelAliases(destType);
+            if (fieldPeeled && fieldPeeled->tag == TypeTag::Array) {
+                if (!isAssignable(destType, rhsType)) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           stmt.range.begin,
+                                           "incompatible types in assignment");
+                    return;
+                }
+                if (!arrayTypesSameShape(destType, rhsType)) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           stmt.range.begin,
+                                           "array assignment requires matching bounds");
+                    return;
+                }
+                if (!stmt.value ||
+                    (stmt.value->kind != ast::ExprKind::Identifier &&
+                     stmt.value->kind != ast::ExprKind::Select)) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           stmt.range.begin,
+                                           "array assignment requires an array variable");
+                }
+                return;
+            }
         }
     } else if (stmt.index) {
         TypePtr indexType = typeExpr(ctx, *stmt.index);

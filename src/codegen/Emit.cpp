@@ -379,8 +379,26 @@ void emitArrayCopy(EmitCtx &ctx, const irs::Instr &instr) {
 /// Push args left-to-right, CALL callee; spill non-void result.
 void emitUserCall(EmitCtx &ctx, const irs::Instr &instr) {
     spillStackTop(ctx);
-    for (const std::string &copy : instr.matCopies) {
-        ctx.writer.op("MAT_COPY", copy);
+    for (const irs::ArrayCopySetup &copy : instr.matCopies) {
+        if (copy.size < 1) {
+            ctx.fail("codegen: array argument copy has invalid size");
+            return;
+        }
+        ctx.writer.pushInt(copy.size);
+        ctx.writer.op("DIM_ARRAY", copy.dst);
+        switch (copy.element) {
+        case irs::IrType::StringRef:
+            break;
+        case irs::IrType::F64:
+            ctx.writer.pushFlt(0.0);
+            ctx.writer.op("MAT_INIT", copy.dst);
+            break;
+        default:
+            ctx.writer.pushInt(0);
+            ctx.writer.op("MAT_INIT", copy.dst);
+            break;
+        }
+        ctx.writer.op("MAT_COPY", copy.dst + "|" + copy.src);
     }
     for (const irs::ValueId arg : instr.args) {
         if (ctx.spilled.count(arg.id) == 0) {

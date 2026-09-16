@@ -229,12 +229,6 @@ void declareRecordFields(LowerCtx &ctx, std::string_view baseName, const TypePtr
     }
 }
 
-void declareRecordParamFields(LowerCtx &ctx, std::string_view paramName, const TypePtr &recordType,
-                              std::uint32_t paramSlot) {
-    (void)paramSlot;
-    declareRecordFields(ctx, paramName, recordType);
-}
-
 std::optional<ResolvedSlot> resolveFieldSlot(const LowerCtx &ctx, std::string_view baseName,
                                              std::string_view fieldName) {
     const auto found = ctx.fieldSlots.find(fieldSlotKey(baseName, fieldName));
@@ -283,6 +277,10 @@ void copyRecordFields(LowerCtx &ctx, std::string_view destBase, std::string_view
         const auto srcSlot = resolveFieldSlot(ctx, srcBase, field.name);
         const auto destSlot = resolveFieldSlot(ctx, destBase, field.name);
         if (!srcSlot || !destSlot) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   apollo::common::SourceLocation{},
+                                   "IR lowering: missing record field slot for '" + field.name +
+                                       "'");
             continue;
         }
         const TypePtr fieldType = field.type;
@@ -494,10 +492,13 @@ irs::IrType arrayElementType(const LowerCtx &ctx, const irs::Operand &operand) {
 }
 
 /// Lower call arguments, widening each one the callee declared as `real`.
+/// Value array args become call-site dim/init/copy setups (not stack values).
 std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &calleeName,
                                         const std::vector<std::unique_ptr<ast::Expr>> &args,
-                                        std::vector<std::string> *matCopies) {
+                                        std::vector<irs::ArrayCopySetup> *matCopies) {
     const Symbol *callee = ctx.symbols.lookup(calleeName);
+    const std::string calleeDeclared =
+        callee ? callee->name : calleeName;
     std::vector<irs::ValueId> values;
     values.reserve(args.size());
     for (std::size_t i = 0; i < args.size(); ++i) {
@@ -506,8 +507,10 @@ std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &callee
         }
         irs::IrType paramType = irs::IrType::Error;
         bool isVar = false;
+        TypePtr paramPascalType;
         if (callee && i < callee->paramTypes.size()) {
-            paramType = toIrType(callee->paramTypes[i]);
+            paramPascalType = callee->paramTypes[i];
+            paramType = toIrType(paramPascalType);
             isVar = i < callee->paramIsVar.size() && callee->paramIsVar[i];
         }
         if (paramType == irs::IrType::ArrayRef && !isVar) {
@@ -518,11 +521,34 @@ std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &callee
                 continue;
             }
             if (matCopies && callee && i < callee->paramNames.size()) {
-                const std::string dst =
-                    fieldStorageName(calleeName, callee->paramNames[i]);
-                const std::string src =
-                    fieldStorageName(ctx.function.name, args[i]->text);
-                matCopies->push_back(dst + "|" + src);
+                const auto actualSlot = resolveSlot(ctx, foldAsciiLower(args[i]->text));
+                std::string actualName = args[i]->text;
+                if (actualSlot && actualSlot->operand.kind == irs::OperandKind::Local &&
+                    actualSlot->operand.slot < ctx.function.locals.size()) {
+                    actualName = ctx.function.locals[actualSlot->operand.slot].name;
+                } else if (actualSlot && actualSlot->operand.kind == irs::OperandKind::Param &&
+                           actualSlot->operand.slot < ctx.function.params.size()) {
+                    actualName = ctx.function.params[actualSlot->operand.slot].name;
+                }
+                TypePtr peeled = peelTypeAliases(paramPascalType);
+                std::int64_t size = 0;
+                irs::IrType element = irs::IrType::I32;
+                if (peeled && peeled->tag == TypeTag::Array && peeled->hasBounds) {
+                    size = peeled->indexHigh - peeled->indexLow + 1;
+                    element = toIrType(peeled->element);
+                }
+                if (size < 1) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           args[i]->range.begin,
+                                           "IR lowering: array parameter has an empty range");
+                    continue;
+                }
+                irs::ArrayCopySetup setup;
+                setup.dst = fieldStorageName(calleeDeclared, callee->paramNames[i]);
+                setup.src = fieldStorageName(ctx.function.name, actualName);
+                setup.size = size;
+                setup.element = element;
+                matCopies->push_back(std::move(setup));
             }
             continue;
         }
@@ -533,14 +559,15 @@ std::vector<irs::ValueId> lowerCallArgs(LowerCtx &ctx, const std::string &callee
 
 irs::ValueId lowerUserCall(LowerCtx &ctx, const std::string &calleeName,
                            std::vector<irs::ValueId> args, irs::IrType resultType,
-                           std::vector<std::string> matCopies) {
+                           std::vector<irs::ArrayCopySetup> matCopies) {
+    const Symbol *callee = ctx.symbols.lookup(calleeName);
     irs::Instr call;
     call.op = irs::Op::Call;
     call.type = resultType;
     if (resultType != irs::IrType::Void) {
         call.result = ctx.function.newTemp();
     }
-    call.text = calleeName;
+    call.text = callee ? callee->name : calleeName;
     call.args = std::move(args);
     call.matCopies = std::move(matCopies);
     const irs::ValueId result = call.result;
@@ -698,7 +725,7 @@ irs::ValueId lowerBinary(LowerCtx &ctx, const ast::Expr &expr) {
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
     // Builtins are statement-only per M3 (never valid as an expression), so a Call
     // Expr here is always a user function call.
-    std::vector<std::string> matCopies;
+    std::vector<irs::ArrayCopySetup> matCopies;
     return lowerUserCall(ctx, expr.text,
                          lowerCallArgs(ctx, expr.text, expr.args, &matCopies), toIrType(expr.type),
                          std::move(matCopies));
@@ -833,7 +860,7 @@ void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
         return;
     }
 
-    std::vector<std::string> matCopies;
+    std::vector<irs::ArrayCopySetup> matCopies;
     std::vector<irs::ValueId> argValues =
         lowerCallArgs(ctx, stmt.name, stmt.args, &matCopies);
 
@@ -872,6 +899,16 @@ void lowerAssign(LowerCtx &ctx, const ast::Stmt &stmt) {
             const irs::ValueId value = lowerValue(arrayElementType(ctx, destSlot->operand));
             const irs::ValueId index = lowerExpr(ctx, *stmt.index);
             emitStoreIndex(ctx, destSlot->operand, index, value);
+            return;
+        }
+        if (destSlot->type == irs::IrType::ArrayRef && stmt.value) {
+            const auto srcSlot = resolveArrayBaseSlot(ctx, *stmt.value);
+            if (!srcSlot || srcSlot->type != irs::IrType::ArrayRef) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, stmt.range.begin,
+                                       "IR lowering: array copy requires an array variable source");
+                return;
+            }
+            emitArrayCopy(ctx, destSlot->operand, srcSlot->operand);
             return;
         }
         emitStore(ctx, destSlot->operand, lowerValue(destSlot->type));
@@ -1159,21 +1196,8 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
 }
 
 void emitArrayDims(LowerCtx &ctx) {
-    for (std::uint32_t i = 0; i < ctx.function.params.size(); ++i) {
-        const irs::Param &param = ctx.function.params[i];
-        if (param.type != irs::IrType::ArrayRef || !param.arrayLow || !param.arrayHigh) {
-            continue;
-        }
-        const std::int64_t size = *param.arrayHigh - *param.arrayLow + 1;
-        if (size < 1) {
-            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
-                                   apollo::common::SourceLocation{},
-                                   "IR lowering: array parameter '" + param.name +
-                                       "' has an empty range");
-            continue;
-        }
-        emitDimArray(ctx, makeParamOperand(i), size, param.arrayElement);
-    }
+    // Array value parameters are dimmed at the call site before MAT_COPY; only locals
+    // are dimensioned in the callee entry block.
     for (std::uint32_t i = 0; i < ctx.function.locals.size(); ++i) {
         const irs::Local &local = ctx.function.locals[i];
         if (local.type != irs::IrType::ArrayRef || !local.arrayLow || !local.arrayHigh) {

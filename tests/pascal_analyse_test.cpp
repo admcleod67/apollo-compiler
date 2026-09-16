@@ -353,6 +353,57 @@ int main() {
         }
     }
 
+    // Record array-field assign requires matching bounds.
+    {
+        ScanAnalyse run("recarrbad.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  a2 = record a: array [1..2] of integer; end;\n"
+                        "  a3 = record a: array [1..3] of integer; end;\n"
+                        "var\n"
+                        "  r: a2;\n"
+                        "  s: a3;\n"
+                        "begin\n"
+                        "  r.a := s.a;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("mismatched record array-field bounds should diagnose");
+        }
+    }
+
+    // Whole-record assign rejects records that differ only in an array field's bounds.
+    {
+        ScanAnalyse run("recshapebad.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  a2 = record a: array [1..2] of integer; end;\n"
+                        "  a3 = record a: array [1..3] of integer; end;\n"
+                        "var\n"
+                        "  p: a2;\n"
+                        "  q: a3;\n"
+                        "begin\n"
+                        "  q := p;\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("whole-record assign with mismatched array-field bounds should diagnose");
+        }
+    }
+
+    // Duplicate record field names are diagnosed.
+    {
+        ScanAnalyse run("recdup.pas",
+                        "program P;\n"
+                        "type\n"
+                        "  bad = record x: integer; x: real; end;\n"
+                        "var\n"
+                        "  r: bad;\n"
+                        "begin\n"
+                        "end.\n");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("duplicate record field should diagnose");
+        }
+    }
+
     // Nested record fields are rejected.
     {
         ScanAnalyse run("recordnest.pas",

@@ -464,7 +464,9 @@ int main() {
         }
     }
 
-    // Value array parameter: call site MAT_COPY, callee formal not loaded from stack.
+    // Value array parameter: call site DIM + INIT + MAT_COPY (callee must not re-dim formal).
+    // Old order copied into a missing/wiped formal; Gemini requires the destination to exist
+    // first, and re-DIM after copy would discard the copied contents.
     {
         ScanAnalyseLowerEmit run("arrparam.pas",
                                  "program ArrParam;\n"
@@ -480,8 +482,43 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("array value parameter should emit");
         }
-        if (!contains(run.tbc, "MAT_COPY bump$a|main$src")) {
-            return fail("array argument should MAT_COPY into callee formal");
+        const std::string dimInitCopy =
+            "PUSH_INT 2\n    DIM_ARRAY bump$a\n    PUSH_INT 0\n    MAT_INIT bump$a\n"
+            "    MAT_COPY bump$a|main$src";
+        if (!contains(run.tbc, dimInitCopy)) {
+            return fail("array argument should DIM then INIT then MAT_COPY at call site");
+        }
+        const auto callPos = run.tbc.find("CALL bump");
+        const auto setupPos = run.tbc.find(dimInitCopy);
+        if (callPos == std::string::npos || setupPos == std::string::npos || setupPos > callPos) {
+            return fail("array argument setup must precede CALL");
+        }
+        const auto bumpLabel = run.tbc.find("bump:");
+        if (bumpLabel == std::string::npos) {
+            return fail("array parameter callee label missing");
+        }
+        const auto bumpDim = run.tbc.find("DIM_ARRAY bump$a", bumpLabel);
+        if (bumpDim != std::string::npos) {
+            return fail("callee must not DIM_ARRAY the array formal (call site owns dim/copy)");
+        }
+    }
+
+    // Record array-field whole assign lowers to MAT_COPY.
+    {
+        ScanAnalyseLowerEmit run("recarr.pas",
+                                 "program RecArr;\n"
+                                 "type\n"
+                                 "  box = record a: array [1..2] of integer; end;\n"
+                                 "var\n"
+                                 "  r, s: box;\n"
+                                 "begin\n"
+                                 "  r.a := s.a;\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("record array-field assign should emit");
+        }
+        if (!contains(run.tbc, "MAT_COPY main$r$a|main$s$a")) {
+            return fail("record array-field assign should emit MAT_COPY main$r$a|main$s$a");
         }
     }
 
