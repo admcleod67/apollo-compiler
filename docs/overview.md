@@ -73,5 +73,4 @@ text from the book is used directly; only the conceptual methodology informs the
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) — completed
 - [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md)
 - [Milestone 8 — Multi-language expansion](milestones/08-multi-language-expansion.md) (deferred)
-- Gemini VM documentation: `gemini-system/docs/vm.md` / `pick-system/docs/vm.md` (sibling
-  repository)
+- Draft VM consumer notes (for handoff): [`for-gemini/apollo-consumer-notes.md`](for-gemini/apollo-consumer-notes.md)
