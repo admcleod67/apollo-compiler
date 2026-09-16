@@ -57,6 +57,16 @@ struct SourceFileLoadResult {
 
 [[nodiscard]] SourceFileLoadResult loadSourceFile(std::string_view path);
 
+/// Resolve `includeName` relative to the directory of `includerPath`.
+/// Returns a weakly-canonical absolute path string, or nullopt with `error` set.
+struct ResolveIncludeResult {
+    std::optional<std::string> path;
+    std::string error;
+};
+
+[[nodiscard]] ResolveIncludeResult resolveIncludePath(std::string_view includerPath,
+                                                      std::string_view includeName);
+
 } // namespace apollo::common
 
 #endif // APOLLO_COMMON_SOURCE_FILE_HPP

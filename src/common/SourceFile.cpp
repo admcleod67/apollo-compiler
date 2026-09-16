@@ -1,8 +1,10 @@
 #include "apollo/common/SourceFile.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <system_error>
 #include <utility>
 
 namespace apollo::common {
@@ -57,6 +59,28 @@ SourceFileLoadResult loadSourceFile(std::string_view path) {
     }
 
     result.file = SourceFile::fromString(pathStr, buffer.str());
+    return result;
+}
+
+ResolveIncludeResult resolveIncludePath(std::string_view includerPath,
+                                        std::string_view includeName) {
+    ResolveIncludeResult result;
+    namespace fs = std::filesystem;
+    const fs::path name(includeName);
+    fs::path resolved;
+    if (name.is_absolute()) {
+        resolved = name;
+    } else {
+        const fs::path parent = fs::path(includerPath).parent_path();
+        resolved = parent.empty() ? name : parent / name;
+    }
+    std::error_code ec;
+    const fs::path canonical = fs::weakly_canonical(resolved, ec);
+    if (ec) {
+        result.error = "cannot resolve include path: " + resolved.string();
+        return result;
+    }
+    result.path = canonical.string();
     return result;
 }
 

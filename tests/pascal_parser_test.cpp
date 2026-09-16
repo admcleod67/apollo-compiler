@@ -18,13 +18,13 @@ int fail(const char *message) {
 struct ScanParse {
     apollo::common::SourceFile source;
     apollo::common::DiagnosticEngine diagnostics;
-    apollo::pascal::TokenStream tokens;
+    apollo::pascal::ScanResult scanned;
     std::unique_ptr<apollo::pascal::ast::Program> program;
 
     explicit ScanParse(std::string path, std::string text)
         : source(apollo::common::SourceFile::fromString(std::move(path), std::move(text))),
-          diagnostics(source), tokens(apollo::pascal::scan(source, diagnostics)),
-          program(apollo::pascal::parse(source, tokens, diagnostics)) {}
+          diagnostics(source), scanned(apollo::pascal::scan(source, diagnostics)),
+          program(apollo::pascal::parse(source, scanned.tokens, diagnostics)) {}
 };
 
 using apollo::pascal::ast::BinaryOp;

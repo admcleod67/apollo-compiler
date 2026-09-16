@@ -19,13 +19,13 @@ int fail(const char *message) {
 int main() {
     const auto source = apollo::common::SourceFile::fromString("tiny.pas", "program X;");
     apollo::common::DiagnosticEngine diagnostics(source);
-    const auto stream = apollo::pascal::scan(source, diagnostics);
+    const auto scanned = apollo::pascal::scan(source, diagnostics);
     if (diagnostics.errorCount() != 0) {
         return fail("tiny program should scan cleanly");
     }
 
     std::ostringstream out;
-    apollo::pascal::writeTokenDump(out, stream);
+    apollo::pascal::writeTokenDump(out, scanned.tokens);
     const std::string dump = out.str();
 
     if (dump.find("KeywordProgram") == std::string::npos) {

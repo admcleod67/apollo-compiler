@@ -11,12 +11,23 @@
 #include "apollo/common/SourceFile.hpp"
 #include "apollo/pascal/TokenStream.hpp"
 
+#include <memory>
+#include <vector>
+
 namespace apollo::pascal {
 
-/// Lex an entire compilation unit. Always returns a stream ending in EndOfFile.
-/// Ordinary lexical errors are reported through diagnostics (no throw).
-[[nodiscard]] TokenStream scan(const apollo::common::SourceFile &source,
-                               apollo::common::DiagnosticEngine &diagnostics);
+/// Owned source buffers (index 0 = root) plus the spliced token stream.
+/// Lexemes are views into `sources`; keep this result alive while using tokens.
+struct ScanResult {
+    std::vector<std::unique_ptr<apollo::common::SourceFile>> sources;
+    TokenStream tokens;
+};
+
+/// Lex an entire compilation unit, expanding `{$I}` / `{$i}` includes.
+/// Always returns a stream ending in EndOfFile. Lexical errors are reported
+/// through diagnostics (no throw).
+[[nodiscard]] ScanResult scan(const apollo::common::SourceFile &source,
+                              apollo::common::DiagnosticEngine &diagnostics);
 
 } // namespace apollo::pascal
 

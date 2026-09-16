@@ -53,9 +53,9 @@ int tokensFile(std::string_view path) {
     }
 
     apollo::common::DiagnosticEngine diagnostics(*loaded.file);
-    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto scanned = apollo::pascal::scan(*loaded.file, diagnostics);
     diagnostics.write(std::cerr);
-    apollo::pascal::writeTokenDump(std::cout, stream);
+    apollo::pascal::writeTokenDump(std::cout, scanned.tokens);
     return diagnostics.errorCount() == 0 ? 0 : 1;
 }
 
@@ -67,8 +67,8 @@ int astFile(std::string_view path) {
     }
 
     apollo::common::DiagnosticEngine diagnostics(*loaded.file);
-    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
-    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    const auto scanned = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, scanned.tokens, diagnostics);
     if (program) {
         (void)apollo::pascal::analyse(*program, diagnostics);
         apollo::pascal::writeAstDump(std::cout, *program);
@@ -85,8 +85,8 @@ int checkFile(std::string_view path) {
     }
 
     apollo::common::DiagnosticEngine diagnostics(*loaded.file);
-    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
-    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    const auto scanned = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, scanned.tokens, diagnostics);
     if (program) {
         (void)apollo::pascal::analyse(*program, diagnostics);
     }
@@ -102,8 +102,8 @@ int irFile(std::string_view path) {
     }
 
     apollo::common::DiagnosticEngine diagnostics(*loaded.file);
-    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
-    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    const auto scanned = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, scanned.tokens, diagnostics);
     if (program) {
         const auto symbols = apollo::pascal::analyse(*program, diagnostics);
         if (diagnostics.errorCount() == 0) {
@@ -126,8 +126,8 @@ int emitFile(std::string_view path) {
     }
 
     apollo::common::DiagnosticEngine diagnostics(*loaded.file);
-    const auto stream = apollo::pascal::scan(*loaded.file, diagnostics);
-    const auto program = apollo::pascal::parse(*loaded.file, stream, diagnostics);
+    const auto scanned = apollo::pascal::scan(*loaded.file, diagnostics);
+    const auto program = apollo::pascal::parse(*loaded.file, scanned.tokens, diagnostics);
     if (program) {
         const auto symbols = apollo::pascal::analyse(*program, diagnostics);
         if (diagnostics.errorCount() == 0) {

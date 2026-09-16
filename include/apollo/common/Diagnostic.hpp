@@ -23,6 +23,8 @@ struct Diagnostic {
     DiagnosticSeverity severity{DiagnosticSeverity::Error};
     std::string message;
     SourceLocation location{};
+    /// Path captured at report time; empty means use the engine's primary source path.
+    std::string path;
 };
 
 } // namespace apollo::common

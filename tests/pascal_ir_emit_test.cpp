@@ -24,15 +24,15 @@ bool contains(const std::string &haystack, const std::string &needle) {
 struct ScanAnalyseLowerEmit {
     apollo::common::SourceFile source;
     apollo::common::DiagnosticEngine diagnostics;
-    apollo::pascal::TokenStream tokens;
+    apollo::pascal::ScanResult scanned;
     std::unique_ptr<apollo::pascal::ast::Program> program;
     std::unique_ptr<apollo::pascal::SymbolTable> symbols;
     std::string tbc;
 
     explicit ScanAnalyseLowerEmit(std::string path, std::string text)
         : source(apollo::common::SourceFile::fromString(std::move(path), std::move(text))),
-          diagnostics(source), tokens(apollo::pascal::scan(source, diagnostics)),
-          program(apollo::pascal::parse(source, tokens, diagnostics)) {
+          diagnostics(source), scanned(apollo::pascal::scan(source, diagnostics)),
+          program(apollo::pascal::parse(source, scanned.tokens, diagnostics)) {
         if (!program) {
             return;
         }

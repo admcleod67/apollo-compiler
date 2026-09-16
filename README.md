@@ -28,10 +28,25 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 4 — Intermediate representation** is complete (`0.4.0`).
 **Milestone 5 — Code generator** is complete (`0.5.0`).
 **Milestone 6 — Standalone VM execution** is complete (`0.6.0`).
-Toolchain version is `0.6.0` (`PROJECT_VERSION`); cut git tag `v0.6.0` when ready.
-**Next:** [Milestone 7 — Pascal language completeness](docs/milestones/07-pascal-language-completeness.md)
-(Wirth console / Pascal80-style). Multi-language expansion is
-[deferred](docs/milestones/08-multi-language-expansion.md).
+**Milestone 7 — Pascal language completeness** is complete (`0.7.0`).
+Toolchain version is `0.7.0` (`PROJECT_VERSION`); cut git tag `v0.7.0` when ready.
+Multi-language expansion remains [deferred](docs/milestones/08-multi-language-expansion.md)
+as Milestone 8.
+
+## Supported dialect
+
+Apollo targets a **Wirth console / Pascal80-style** subset suitable for standalone Gemini
+VM programs:
+
+**In scope:** `program` / `begin`…`end`; `const` / `type` / `var`; integer, real, boolean,
+char, string; flat `record`; `array [lo..hi] of T` (const bounds); value array parameters
+and whole-array assign via `MAT_COPY`; procedures and functions (program-block only);
+`if` / `while` / `repeat` / `for` / `case`; `write` / `writeln` / `read` / `readln`;
+`{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
+
+**Out of scope:** units; `file` / file I/O; pointers; sets; nested subprograms; enclosing-scope
+locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`
+directives (unknown directives warn and are ignored).
 
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 

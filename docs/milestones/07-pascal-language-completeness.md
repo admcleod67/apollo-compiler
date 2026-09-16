@@ -314,6 +314,17 @@ parameters; record or array function results; `file of record`.
 - Version bump policy when closing: report **`0.7.0`** (`PROJECT_VERSION`); cut git tag
   `v0.7.0` as a separate release follow-up.
 
+**Include notes (pinned):**
+
+- Directives appear only in `{`$…`}` (not `(*…*)`). `{$I}` / `{$i}` take a filename
+  (optional quotes); path is resolved relative to the **including** file’s directory.
+- Include stack: cycle detection via weakly-canonical absolute paths; max nesting depth
+  **32**; missing file / cycle / depth → **error**.
+- Unknown `{$…}` directives → **warning** (do not fail `--check` / `--emit` by themselves).
+- `--list` does not expand includes. Tag `v0.7.0` is a separate release step.
+
+**Status:** completed.
+
 ---
 
 ## Success criteria (draft)
@@ -325,11 +336,11 @@ parameters; record or array function results; `file of record`.
 - [x] `real` arithmetic is numerically faithful (Stage 1 follow-up **1b**).
 - [x] Flat `record` field access emits and runs.
 - [x] `case` on ordinal types emits and runs.
-- [ ] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
-- [ ] README documents the supported Wirth console / Pascal80-style dialect and explicit
+- [x] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
+- [x] README documents the supported Wirth console / Pascal80-style dialect and explicit
   non-goals (units, files, pointers, sets, …).
-- [ ] Milestone 8 remains deferred; no second language front-end started as part of M7.
-- [ ] `ctest` green on a clean configure/build.
+- [x] Milestone 8 remains deferred; no second language front-end started as part of M7.
+- [x] `ctest` green on a clean configure/build.
 
 ---
 
@@ -340,7 +351,7 @@ parameters; record or array function results; `file of record`.
 | Stage 1 — Scalar / array debt | completed |
 | Stage 2 — Records | completed |
 | Stage 3 — `case` + nesting | completed |
-| Stage 4 — `{$I}` + dialect close-out | not started |
+| Stage 4 — `{$I}` + dialect close-out | completed |
 
 ---
 

@@ -3,11 +3,17 @@
 #include "apollo/common/Diagnostic.hpp"
 #include "apollo/common/SourceLocation.hpp"
 
+#include <cctype>
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace apollo::pascal {
 namespace {
@@ -17,6 +23,18 @@ using apollo::common::DiagnosticSeverity;
 using apollo::common::SourceFile;
 using apollo::common::SourceLocation;
 using apollo::common::SourceRange;
+
+constexpr std::size_t kMaxIncludeDepth = 32;
+
+std::string canonicalPathKey(std::string_view path) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path canonical = fs::weakly_canonical(fs::path(path), ec);
+    if (ec) {
+        return std::string(path);
+    }
+    return canonical.string();
+}
 
 bool isAsciiLetter(const char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
@@ -52,6 +70,16 @@ std::string foldAsciiLower(const std::string_view text) {
         out.push_back(toLowerAscii(c));
     }
     return out;
+}
+
+std::string trimAscii(std::string_view text) {
+    while (!text.empty() && isWhitespace(text.front())) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && isWhitespace(text.back())) {
+        text.remove_suffix(1);
+    }
+    return std::string(text);
 }
 
 const std::unordered_map<std::string, TokenKind> &keywordTable() {
@@ -107,15 +135,20 @@ TokenKind lookupKeyword(const std::string_view lexeme) {
 
 class ScannerImpl {
 public:
-    ScannerImpl(const SourceFile &source, DiagnosticEngine &diagnostics)
-        : source_(&source), text_(source.text()), diagnostics_(&diagnostics) {}
+    ScannerImpl(ScanResult &result, DiagnosticEngine &diagnostics)
+        : result_(&result), diagnostics_(&diagnostics) {
+        pushFrame(*result.sources.front());
+    }
 
     TokenStream run() {
         TokenStream stream;
-        while (!atEnd()) {
+        while (true) {
             skipWhitespaceAndComments();
             if (atEnd()) {
-                break;
+                if (!popFrame()) {
+                    break;
+                }
+                continue;
             }
             if (auto token = nextToken()) {
                 stream.push_back(*token);
@@ -126,10 +159,52 @@ public:
     }
 
 private:
-    const SourceFile *source_;
-    std::string_view text_;
+    struct Frame {
+        const SourceFile *source{};
+        std::string_view text{};
+        std::size_t pos{0};
+        std::string path;
+        std::string canonicalKey;
+    };
+
+    ScanResult *result_;
     DiagnosticEngine *diagnostics_;
+    std::vector<Frame> stack_;
+    std::unordered_set<std::string> activeCanonicalPaths_;
+
+    const SourceFile *source_{nullptr};
+    std::string_view text_{};
     std::size_t pos_{0};
+
+    void pushFrame(const SourceFile &source) {
+        const std::string key = canonicalPathKey(source.path());
+        stack_.push_back(Frame{&source, source.text(), 0, source.path(), key});
+        activeCanonicalPaths_.insert(key);
+        applyTopFrame();
+        diagnostics_->setActivePath(source.path());
+    }
+
+    bool popFrame() {
+        if (stack_.size() <= 1) {
+            return false;
+        }
+        activeCanonicalPaths_.erase(stack_.back().canonicalKey);
+        stack_.pop_back();
+        applyTopFrame();
+        diagnostics_->setActivePath(stack_.back().path);
+        return true;
+    }
+
+    void applyTopFrame() {
+        Frame &top = stack_.back();
+        source_ = top.source;
+        text_ = top.text;
+        pos_ = top.pos;
+    }
+
+    void saveTopPos() {
+        stack_.back().pos = pos_;
+    }
 
     [[nodiscard]] bool atEnd() const noexcept { return pos_ >= text_.size(); }
 
@@ -145,18 +220,25 @@ private:
         return text_[pos_++];
     }
 
-    [[nodiscard]] SourceLocation loc(const std::size_t offset) const { return source_->locationAt(offset); }
+    [[nodiscard]] SourceLocation loc(const std::size_t offset) const {
+        return source_->locationAt(offset);
+    }
 
     [[nodiscard]] SourceRange range(const std::size_t begin, const std::size_t end) const {
         return SourceRange{loc(begin), loc(end)};
     }
 
-    [[nodiscard]] Token makeToken(const TokenKind kind, const std::size_t begin, const std::size_t end) const {
+    [[nodiscard]] Token makeToken(const TokenKind kind, const std::size_t begin,
+                                  const std::size_t end) const {
         return Token{kind, range(begin, end), text_.substr(begin, end - begin)};
     }
 
     void errorAt(const std::size_t offset, std::string message) const {
         diagnostics_->report(DiagnosticSeverity::Error, loc(offset), std::move(message));
+    }
+
+    void warnAt(const std::size_t offset, std::string message) const {
+        diagnostics_->report(DiagnosticSeverity::Warning, loc(offset), std::move(message));
     }
 
     void skipWhitespaceAndComments() {
@@ -167,7 +249,11 @@ private:
                 continue;
             }
             if (c == '{') {
-                skipBraceComment();
+                if (peek(1) == '$') {
+                    handleDirective();
+                } else {
+                    skipBraceComment();
+                }
                 continue;
             }
             if (c == '(' && peek(1) == '*') {
@@ -206,6 +292,101 @@ private:
         errorAt(start, "unclosed block comment");
     }
 
+    void handleDirective() {
+        const std::size_t start = pos_;
+        advance(); // '{'
+        advance(); // '$'
+
+        std::string body;
+        bool closed = false;
+        while (!atEnd()) {
+            if (peek() == '}') {
+                advance();
+                closed = true;
+                break;
+            }
+            body.push_back(advance());
+        }
+        if (!closed) {
+            errorAt(start, "unclosed compiler directive");
+            return;
+        }
+
+        std::string_view rest(body);
+        while (!rest.empty() && isWhitespace(rest.front())) {
+            rest.remove_prefix(1);
+        }
+        if (rest.empty() || !isAsciiLetter(rest.front())) {
+            warnAt(start, "unknown compiler directive");
+            return;
+        }
+
+        const char letter = toLowerAscii(rest.front());
+        rest.remove_prefix(1);
+
+        if (letter == 'i') {
+            if (!rest.empty() && (rest.front() == '+' || rest.front() == '-')) {
+                errorAt(start, "{$I+} / {$I-} forms are not supported");
+                return;
+            }
+            handleInclude(start, trimAscii(rest));
+            return;
+        }
+
+        warnAt(start, "unknown compiler directive");
+    }
+
+    void handleInclude(std::size_t directiveOffset, std::string filename) {
+        if (filename.empty()) {
+            errorAt(directiveOffset, "{$I} requires a file name");
+            return;
+        }
+        if ((filename.front() == '\'' && filename.back() == '\'') ||
+            (filename.front() == '"' && filename.back() == '"')) {
+            if (filename.size() < 2) {
+                errorAt(directiveOffset, "{$I} requires a file name");
+                return;
+            }
+            filename = filename.substr(1, filename.size() - 2);
+            filename = trimAscii(filename);
+        }
+        if (filename.empty()) {
+            errorAt(directiveOffset, "{$I} requires a file name");
+            return;
+        }
+
+        // Nesting depth: root is frame 0; at most kMaxIncludeDepth includes.
+        if (stack_.size() > kMaxIncludeDepth) {
+            errorAt(directiveOffset, "include nesting depth exceeds limit of 32");
+            return;
+        }
+
+        const auto resolved =
+            apollo::common::resolveIncludePath(stack_.back().path, filename);
+        if (!resolved.path) {
+            errorAt(directiveOffset, resolved.error);
+            return;
+        }
+        const std::string &canonical = *resolved.path;
+        if (activeCanonicalPaths_.count(canonical) != 0) {
+            errorAt(directiveOffset, "cyclic include of '" + canonical + "'");
+            return;
+        }
+
+        auto loaded = apollo::common::loadSourceFile(canonical);
+        if (!loaded.file) {
+            errorAt(directiveOffset, loaded.error);
+            return;
+        }
+
+        saveTopPos();
+        result_->sources.push_back(
+            std::make_unique<SourceFile>(std::move(*loaded.file)));
+        // Prefer display path as the resolved canonical path for diagnostics.
+        SourceFile &owned = *result_->sources.back();
+        pushFrame(owned);
+    }
+
     std::optional<Token> nextToken() {
         const char c = peek();
         if (isIdentStart(c)) {
@@ -239,10 +420,9 @@ private:
 
         bool isReal = false;
 
-        // Real: '.' digit... but not '..'
         if (peek() == '.' && peek(1) != '.' && isDigit(peek(1))) {
             isReal = true;
-            advance(); // '.'
+            advance();
             while (!atEnd() && isDigit(peek())) {
                 advance();
             }
@@ -257,7 +437,6 @@ private:
             }
             if (!isDigit(peek())) {
                 errorAt(expMark, "malformed real exponent");
-                // Best-effort: keep what we have as a real/integer token.
             } else {
                 while (!atEnd() && isDigit(peek())) {
                     advance();
@@ -270,7 +449,7 @@ private:
 
     Token scanQuotedLiteral() {
         const std::size_t begin = pos_;
-        advance(); // opening '
+        advance();
 
         std::string decoded;
         bool closed = false;
@@ -296,13 +475,11 @@ private:
 
         if (!closed) {
             errorAt(begin, "unclosed string or character literal");
-            // Recovery: already stopped at EOL/EOF.
         }
 
         const std::size_t end = pos_;
         const TokenKind kind =
             (closed && decoded.size() == 1) ? TokenKind::CharLiteral : TokenKind::StringLiteral;
-        // Lexeme is the raw source span (including quotes), not decoded content.
         return makeToken(kind, begin, end);
     }
 
@@ -373,8 +550,14 @@ private:
 
 } // namespace
 
-TokenStream scan(const SourceFile &source, DiagnosticEngine &diagnostics) {
-    return ScannerImpl(source, diagnostics).run();
+ScanResult scan(const SourceFile &source, DiagnosticEngine &diagnostics) {
+    ScanResult result;
+    result.sources.push_back(
+        std::make_unique<SourceFile>(SourceFile::fromString(source.path(), source.text())));
+    diagnostics.setActivePath(result.sources.front()->path());
+    result.tokens = ScannerImpl(result, diagnostics).run();
+    diagnostics.setActivePath(result.sources.front()->path());
+    return result;
 }
 
 } // namespace apollo::pascal

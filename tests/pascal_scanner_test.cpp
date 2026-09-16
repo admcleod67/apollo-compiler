@@ -36,7 +36,8 @@ int main() {
         const auto source = apollo::common::SourceFile::fromString(
             "scan_hello.pas", "program Hello;\nbegin\n  writeln('Hello, Gemini!');\nend.\n");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (diagnostics.errorCount() != 0) {
             return fail("hello fixture should scan with no errors");
         }
@@ -58,7 +59,8 @@ int main() {
     {
         const auto source = apollo::common::SourceFile::fromString("kw.pas", "Begin BEGIN Beginner");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (stream.size() != 4 || stream[0].kind != TokenKind::KeywordBegin ||
             stream[1].kind != TokenKind::KeywordBegin || stream[2].kind != TokenKind::Identifier ||
             stream[3].kind != TokenKind::EndOfFile) {
@@ -71,7 +73,8 @@ int main() {
         const auto source =
             apollo::common::SourceFile::fromString("c.pas", "a { hide } b (* hide *) c");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (diagnostics.errorCount() != 0) {
             return fail("comments should not error");
         }
@@ -86,7 +89,8 @@ int main() {
     {
         const auto source = apollo::common::SourceFile::fromString("n.pas", "1..2 3.14");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (stream.size() != 5 || stream[0].kind != TokenKind::IntegerLiteral ||
             stream[1].kind != TokenKind::DotDot || stream[2].kind != TokenKind::IntegerLiteral ||
             stream[3].kind != TokenKind::RealLiteral || stream[4].kind != TokenKind::EndOfFile) {
@@ -99,7 +103,8 @@ int main() {
         const auto source =
             apollo::common::SourceFile::fromString("s.pas", "'x' 'hi' 'it''s'");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (diagnostics.errorCount() != 0) {
             return fail("quoted literals should not error");
         }
@@ -114,7 +119,8 @@ int main() {
     {
         const auto source = apollo::common::SourceFile::fromString("bad.pas", "a { unclosed");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (diagnostics.errorCount() < 1) {
             return fail("unclosed comment should report an error");
         }
@@ -127,7 +133,8 @@ int main() {
     {
         const auto source = apollo::common::SourceFile::fromString("bad2.pas", "x := 'oops\ny");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto stream = apollo::pascal::scan(source, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto &stream = scanned.tokens;
         if (diagnostics.errorCount() < 1) {
             return fail("unclosed string should report an error");
         }

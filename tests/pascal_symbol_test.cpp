@@ -22,14 +22,14 @@ int fail(const char *message) {
 struct ScanParseSymbols {
     apollo::common::SourceFile source;
     apollo::common::DiagnosticEngine diagnostics;
-    apollo::pascal::TokenStream tokens;
+    apollo::pascal::ScanResult scanned;
     std::unique_ptr<apollo::pascal::ast::Program> program;
     std::optional<apollo::pascal::SymbolTable> symbols;
 
     explicit ScanParseSymbols(std::string path, std::string text)
         : source(apollo::common::SourceFile::fromString(std::move(path), std::move(text))),
-          diagnostics(source), tokens(apollo::pascal::scan(source, diagnostics)),
-          program(apollo::pascal::parse(source, tokens, diagnostics)) {
+          diagnostics(source), scanned(apollo::pascal::scan(source, diagnostics)),
+          program(apollo::pascal::parse(source, scanned.tokens, diagnostics)) {
         if (program) {
             symbols = apollo::pascal::buildSymbolTable(*program, diagnostics);
         }
@@ -85,8 +85,8 @@ int main() {
         apollo::common::SourceFile source = apollo::common::SourceFile::fromString(
             "multierr.pas", "program P; begin x := ; y := ; end.");
         apollo::common::DiagnosticEngine diagnostics(source);
-        const auto tokens = apollo::pascal::scan(source, diagnostics);
-        const auto program = apollo::pascal::parse(source, tokens, diagnostics);
+        const auto scanned = apollo::pascal::scan(source, diagnostics);
+        const auto program = apollo::pascal::parse(source, scanned.tokens, diagnostics);
         if (diagnostics.errorCount() < 2) {
             return fail("two syntax errors should produce >= 2 diagnostics");
         }

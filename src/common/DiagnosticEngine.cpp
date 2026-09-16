@@ -20,11 +20,17 @@ const char *severityText(DiagnosticSeverity severity) noexcept {
 
 } // namespace
 
-DiagnosticEngine::DiagnosticEngine(const SourceFile &source) noexcept : source_(&source) {}
+DiagnosticEngine::DiagnosticEngine(const SourceFile &source) noexcept
+    : source_(&source), activePath_(source.path()) {}
+
+void DiagnosticEngine::setActivePath(std::string_view path) {
+    activePath_ = std::string(path);
+}
 
 void DiagnosticEngine::report(DiagnosticSeverity severity, SourceLocation location,
                               std::string message) {
-    diagnostics_.push_back(Diagnostic{severity, std::move(message), location});
+    diagnostics_.push_back(
+        Diagnostic{severity, std::move(message), location, activePath_});
 }
 
 std::size_t DiagnosticEngine::errorCount() const noexcept {
@@ -38,10 +44,11 @@ std::size_t DiagnosticEngine::errorCount() const noexcept {
 }
 
 void DiagnosticEngine::write(std::ostream &out) const {
-    const std::string &path = source_->path();
     for (const auto &diagnostic : diagnostics_) {
-        out << path << ':' << diagnostic.location.line << ':' << diagnostic.location.column << ": "
-            << severityText(diagnostic.severity) << ": " << diagnostic.message << '\n';
+        const std::string &path =
+            diagnostic.path.empty() ? source_->path() : diagnostic.path;
+        out << path << ':' << diagnostic.location.line << ':' << diagnostic.location.column
+            << ": " << severityText(diagnostic.severity) << ": " << diagnostic.message << '\n';
     }
 }
 

@@ -18,10 +18,15 @@
 
 namespace apollo::common {
 
-/// Collects diagnostics for one source file. Does not own the SourceFile.
+/// Collects diagnostics for a compilation (possibly multi-file via includes).
+/// Does not own the primary SourceFile.
 class DiagnosticEngine {
 public:
     explicit DiagnosticEngine(const SourceFile &source) noexcept;
+
+    /// Path used for diagnostics that omit an explicit path (initially `source.path()`).
+    void setActivePath(std::string_view path);
+    [[nodiscard]] const std::string &activePath() const noexcept { return activePath_; }
 
     void report(DiagnosticSeverity severity, SourceLocation location, std::string message);
 
@@ -33,6 +38,7 @@ public:
 
 private:
     const SourceFile *source_;
+    std::string activePath_;
     std::vector<Diagnostic> diagnostics_;
 };
 

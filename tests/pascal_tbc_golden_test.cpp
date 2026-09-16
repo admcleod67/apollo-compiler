@@ -112,8 +112,8 @@ std::string emitPas(const fs::path &pasPath, std::string &error) {
     }
     const apollo::common::SourceFile &source = *loaded.file;
     apollo::common::DiagnosticEngine diagnostics(source);
-    const apollo::pascal::TokenStream tokens = apollo::pascal::scan(source, diagnostics);
-    const auto program = apollo::pascal::parse(source, tokens, diagnostics);
+    const auto scanned = apollo::pascal::scan(source, diagnostics);
+    const auto program = apollo::pascal::parse(source, scanned.tokens, diagnostics);
     if (!program) {
         std::ostringstream out;
         diagnostics.write(out);

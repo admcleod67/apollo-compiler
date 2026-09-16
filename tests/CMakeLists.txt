@@ -103,6 +103,20 @@ target_link_libraries(apollo_pascal_scanner_test
 
 target_compile_features(apollo_pascal_scanner_test PRIVATE cxx_std_20)
 
+add_executable(apollo_pascal_include_test
+    pascal_include_test.cpp
+)
+
+target_link_libraries(apollo_pascal_include_test
+    PRIVATE
+        apollo::pascal
+)
+
+target_compile_features(apollo_pascal_include_test PRIVATE cxx_std_20)
+target_compile_definitions(apollo_pascal_include_test
+    PRIVATE APOLLO_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
 add_executable(apollo_token_dump_test
     token_dump_test.cpp
 )
@@ -171,6 +185,7 @@ add_test(
 add_test(NAME apollo_source_listing_test COMMAND apollo_source_listing_test)
 add_test(NAME apollo_location_diagnostics_test COMMAND apollo_location_diagnostics_test)
 add_test(NAME apollo_pascal_scanner_test COMMAND apollo_pascal_scanner_test)
+add_test(NAME apollo_pascal_include_test COMMAND apollo_pascal_include_test)
 add_test(NAME apollo_token_dump_test COMMAND apollo_token_dump_test)
 add_test(NAME apollo_pascal_parser_test COMMAND apollo_pascal_parser_test)
 add_test(NAME apollo_pascal_symbol_test COMMAND apollo_pascal_symbol_test)
@@ -234,6 +249,7 @@ set(APOLLO_EXAMPLE_PROGRAMS
     repeat
     point
     case
+    include_main
 )
 foreach(name IN LISTS APOLLO_EXAMPLE_PROGRAMS)
     add_test(

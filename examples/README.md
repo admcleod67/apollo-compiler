@@ -19,6 +19,7 @@ Sample Pascal programs for Apollo. Each file is self-contained and should pass
 | [`repeat.pas`](repeat.pas) | `repeat` … `until` | `1`, `2`, `3` |
 | [`point.pas`](point.pas) | `record`, field select, whole-record assign | `3` |
 | [`case.pas`](case.pas) | `case` … `of` … `else` … `end` | `3` |
+| [`include_main.pas`](include_main.pas) | `{$I}` include (`include_helper.inc`) | `included` |
 
 ## Compile and run
 
