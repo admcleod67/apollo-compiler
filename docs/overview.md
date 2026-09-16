@@ -7,8 +7,8 @@ It is a sister project to **gemini-system**: Gemini provides the Pick-inspired h
 and bytecode VM; Apollo provides portable language front-ends and, over time, a host-agnostic
 runtime path for Gemini applications outside the Gemini Pick OS.
 
-**Initial language:** Pascal (deepen toward Wirth console / Pascal80-style before other
-languages — see [Milestone 7](milestones/07-pascal-language-completeness.md))  
+**Initial language:** Pascal — see [Pascal dialect](pascal-dialect.md) for supported
+behaviour; [Milestone 7](milestones/07-pascal-language-completeness.md) for delivery notes.  
 **Long-term languages (deferred):** BASIC, COMAL, Fortran, COBOL
 ([Milestone 8](milestones/08-multi-language-expansion.md))
 
@@ -68,6 +68,7 @@ text from the book is used directly; only the conceptual methodology informs the
 
 ## See also
 
+- [Pascal dialect](pascal-dialect.md) — supported Pascal language behaviour
 - [Milestones](milestones.md) — roadmap index
 - [Milestone 5 — Code generator](milestones/05-code-generator.md) — completed
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) — completed

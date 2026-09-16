@@ -48,6 +48,7 @@ and whole-array assign via `MAT_COPY`; procedures and functions (program-block o
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`
 directives (unknown directives warn and are ignored).
 
+Language behaviour in more detail: **[docs/pascal-dialect.md](docs/pascal-dialect.md)**.
 See **[docs/](docs/README.md)** for the overview and milestone plan.
 
 ## Building

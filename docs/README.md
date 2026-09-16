@@ -1,6 +1,7 @@
 # Documentation
 
 - **[Overview](overview.md)** — purpose, architecture principles, and Gemini relationship
+- **[Pascal dialect](pascal-dialect.md)** — supported Pascal language behaviour (not a full manual)
 - **[Milestones](milestones.md)** — phased roadmap index (Milestone 0 onward)
 
 ## Milestone detail pages
