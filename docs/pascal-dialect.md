@@ -10,7 +10,9 @@ compatibility claim.
 
 For sample programs, see [`examples/README.md`](../examples/README.md). For how the
 dialect was delivered, see
-[Milestone 7](milestones/07-pascal-language-completeness.md).
+[Milestone 7](milestones/07-pascal-language-completeness.md). Runtime library growth
+(standard functions, console fidelity, file I/O) is
+[Milestone 8](milestones/08-pascal-runtime-library.md).
 
 ---
 
@@ -29,6 +31,8 @@ programs, types, variables, constants, or subprograms.
 
 **Predeclared names** (ordinary identifiers, not scanner keywords):  
 `integer` `real` `boolean` `char`, and the builtins `write` `writeln` `read` `readln`.
+Wirth standard functions (`ord`, `chr`, `abs`, …) are **not** shipped yet; they are
+Milestone 8 Stage 1 (see [Standard functions](#standard-functions)).
 
 ---
 
@@ -144,7 +148,24 @@ Builtins: `write`, `writeln`, `read`, `readln` (console only).
 - `read` / `readln` of `real` reads a line as text and parses a floating value.
 - **Known deviations:** real output uses the VM’s default numeric formatting (for
   example `1.0` may print as `1`). Pascal-style field widths such as `write(x:8:2)` are
-  not supported.
+  not supported. Console fidelity is [Milestone 8](milestones/08-pascal-runtime-library.md)
+  Stage 2.
+
+---
+
+## Standard functions
+
+Not present yet. Console I/O is the only predeclared library. Planned Wirth helpers:
+
+| Slice | Functions | Status |
+|-------|-----------|--------|
+| Ordinal / arithmetic | `ord`, `chr`, `succ`, `pred`, `odd`, `abs`, `sqr`, `trunc`, `round` | Milestone 8 Stage 1 |
+| Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Milestone 8 Stage 1b (needs a math module) |
+| File status | `eof`, `eoln` | With file I/O (Stage 3); optional console later |
+
+Not planned in Milestone 8: `new` / `dispose`, `pack` / `unpack`, `page`, Turbo string
+helpers (`length`, `copy`, `pos`, …). See
+[Milestone 8](milestones/08-pascal-runtime-library.md).
 
 ---
 
@@ -167,11 +188,14 @@ helpers) over a second complete `program` inside an include.
 ## Explicitly out of scope
 
 - Units (`unit` / `uses`) and separate compilation
-- `file` / `text` and file I/O
 - Pointers / heap, sets, `with`, `goto` / `label`
 - Nested record types as fields; enumerated / subrange *types* as a full type system
 - Objects, overlays, inline assembler, graphics
 - Full directive language (`{$IFDEF}`, `{$R+}`, …) beyond `{$I}` and warn-on-unknown
+- Turbo string helpers (`length`, `copy`, `pos`, …); `pack` / `unpack`; `page`
+
+`file` / `text` I/O is planned as [Milestone 8](milestones/08-pascal-runtime-library.md)
+Stage 3 after a host-agnostic filesystem façade; it is not supported today.
 
 ---
 
@@ -185,6 +209,3 @@ apolloc --emit examples/primes.pas
 Feature-oriented samples live under [`examples/`](../examples/). When this overview and
 the compiler disagree, trust `apolloc --check` / `--emit` and the Pascal tests; update
 this document if behaviour is intentional.
-
-Runtime library growth (standard functions, console fidelity, file I/O) is tracked as
-[Milestone 8](milestones/08-pascal-runtime-library.md).

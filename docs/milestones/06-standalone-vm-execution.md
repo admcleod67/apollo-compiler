@@ -63,8 +63,10 @@ emit `CALL_FUNC` against Gemini’s published Pascal namespace and function IDs 
 changing the Pascal front-end or Apollo IR.
 
 **v1 builtins in Apollo today** are console only: `write`, `writeln`, `read`, `readln`.
-There is no Pascal math library (`sin`, `sqrt`, …) yet. User `procedure` / `function`
-code is ordinary program code inside `.tbc`, not language-module entry points.
+Ordinal and arithmetic helpers (`ord`, `chr`, `abs`, …) and transcendental math
+(`sin`, `sqrt`, …) are [Milestone 8](08-pascal-runtime-library.md) Stages 1 and 1b.
+User `procedure` / `function` code is ordinary program code inside `.tbc`, not
+language-module entry points.
 
 | Horizon | Where the Pascal I/O module lives |
 |---------|-----------------------------------|

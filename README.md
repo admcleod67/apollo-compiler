@@ -45,7 +45,10 @@ and whole-array assign via `MAT_COPY`; procedures and functions (program-block o
 `if` / `while` / `repeat` / `for` / `case`; `write` / `writeln` / `read` / `readln`;
 `{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
 
-**Out of scope:** units; `file` / file I/O; pointers; sets; nested subprograms; enclosing-scope
+**Not yet (Milestone 8):** Wirth standard functions (`ord`, `chr`, `abs`, `sqr`, …),
+console formatting fidelity, then file I/O last (blocked on a host FS façade).
+
+**Out of scope:** units; pointers; sets; nested subprograms; enclosing-scope
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`
 directives (unknown directives warn and are ignored).
 

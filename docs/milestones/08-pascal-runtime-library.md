@@ -52,7 +52,9 @@ COMAL / Fortran / COBOL front-ends.
 **Explicitly deferred (beyond M8 or later)**
 
 - Units / separate compilation.
-- Sets, pointers / heap, `with`, `goto` / `label` (unless a stage explicitly needs one).
+- Sets, pointers / heap (`new` / `dispose`), `with`, `goto` / `label`.
+- Packed arrays (`pack` / `unpack`), `page`, Turbo string helpers (`length`, `copy`,
+  `pos`, …).
 - Full directive language beyond `{$I}` + warn-on-unknown.
 - Objects, overlays, graphics, ISO 7185 / full TP3 claims.
 - Additional source languages ([Milestone 9](09-multi-language-expansion.md)).
@@ -65,27 +67,40 @@ Each stage should leave `main` green and update this document’s **Implementati
 when closed. Stages are ordered by dependency and teaching value: **functions first**,
 **console next**, **files last**.
 
+Milestone 8’s **teaching / console bar** is Stages **1 and 2**. Stages **1b** and **3**
+stay in this milestone (do not spawn new numbered milestones) but may remain open if
+their Gemini prerequisites are not ready; M8 can still close for planning purposes with
+those gaps documented.
+
 ### Stage 1 — Standard functions (ordinal and arithmetic)
 
 **Objective:** Classic Wirth-style helpers that many console programs expect, without a
 filesystem or transcendental math module.
 
-**Candidate set (pin in Stage notes when implementing):**
+**Locked Stage 1 set** (implement this list; do not reopen it mid-stage):
 
-| Group | Examples |
-|-------|----------|
-| Ordinal | `ord`, `chr`, `succ`, `pred`, `odd` |
-| Arithmetic | `abs`, `sqr`, `trunc`, `round` |
+| Function | Argument | Result | Notes |
+|----------|----------|--------|-------|
+| `ord(x)` | `integer`, `char`, or `boolean` | `integer` | `char` → code; `boolean` → `0`/`1` |
+| `chr(n)` | `integer` | `char` | Pin accepted range and out-of-range diagnosis in Stage notes |
+| `succ(x)` | `integer`, `char`, or `boolean` | same type as `x` | |
+| `pred(x)` | `integer`, `char`, or `boolean` | same type as `x` | |
+| `odd(i)` | `integer` | `boolean` | |
+| `abs(x)` | `integer` or `real` | same type as `x` | |
+| `sqr(x)` | `integer` or `real` | same type as `x` | |
+| `trunc(x)` | `real` | `integer` | Toward zero |
+| `round(x)` | `real` | `integer` | Pin half-value ties in Stage notes |
 
 **Approach (pinned intent):**
 
 - Declare as builtins (or equivalent predeclared functions) in the symbol table.
-- Lower to IR / small emit sequences where possible (no new VM opcodes required for the
-  core set).
+- Lower to IR / small emit sequences (no new VM opcodes required for this set).
 - Document signatures and edge cases in the dialect overview.
-- Leave `sin` / `cos` / `arctan` / `ln` / `exp` / `sqrt` (and similar) for Stage 1b or
-  Stage 2 once a Pascal language module / `CALL_FUNC` path is available — do not block
-  Stage 1 on transcendentals.
+- Wrong arity or types diagnose; these names are expression-valued (unlike console I/O).
+
+**Explicit non-goals (Stage 1):** transcendentals (`sqrt`, `sin`, … — Stage 1b);
+`eof` / `eoln` (Stage 3, optionally console with Stage 2); `new` / `dispose`;
+`pack` / `unpack`; `page`; Turbo string helpers (`length`, `copy`, `pos`, …).
 
 **Acceptance criteria**
 
@@ -95,6 +110,25 @@ filesystem or transcendental math module.
 - [ ] `ctest` green.
 
 **Status:** not started.
+
+### Stage 1b — Transcendental math (module-gated)
+
+**Objective:** The remaining Jensen–Wirth arithmetic functions that need a real math
+runtime rather than a few IR ops.
+
+**Locked set:** `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` — each `real` → `real`.
+
+**Prerequisite:** a Pascal language module / `CALL_FUNC` path (or an equivalent VM math
+surface). Do **not** block Stage 1 on this slice.
+
+**Acceptance criteria**
+
+- [ ] Listed functions analyse, lower, and emit via the module/ABI path.
+- [ ] Wrong arity/types diagnose; domain errors follow documented runtime behaviour.
+- [ ] Dialect doc lists the supported math set.
+- [ ] `ctest` green.
+
+**Status:** not started (blocked on language module / `CALL_FUNC`).
 
 ### Stage 2 — Console I/O fidelity
 
@@ -106,6 +140,8 @@ and optionally migrate off bootstrap opcodes.
 - More faithful `real` input/output (for example dedicated float input if the VM adds it).
 - Optional: bind console I/O through `CALL_FUNC` + a Pascal (or shared) module when the
   published ABI is ready; keep bootstrap `PRINT_*` / `INPUT_*` until then.
+- Optional: console `eof` / `eoln` on standard input if cheap; otherwise keep them with
+  Stage 3 files.
 
 **Acceptance criteria**
 
@@ -144,7 +180,11 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 
 - [ ] Stage 1 standard functions usable in examples and tests.
 - [ ] Console I/O behaviour documented; major fidelity gaps closed or explicitly accepted.
+- [ ] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
+      path, with the Wirth math set named here.
 - [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
+      **M8 may close after Stages 1–2** if the host FS façade has not arrived; Stage 3
+      remains the home for files rather than a new milestone.
 - [ ] Multi-language expansion remains deferred as Milestone 9.
 - [ ] Dialect overview stays the user-facing source of truth for what is supported.
 - [ ] `ctest` green on a clean configure/build.
@@ -156,6 +196,7 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Standard functions | not started |
+| Stage 1b — Transcendental math | not started (blocked on language module / `CALL_FUNC`) |
 | Stage 2 — Console I/O fidelity | not started |
 | Stage 3 — File I/O | not started (blocked on host FS) |
 
@@ -177,3 +218,4 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 - Do not implement Pascal files against a Pick-only or POSIX-only path.
 - Units, sets, and pointers remain separate follow-ons unless explicitly pulled into a
   stage.
+- Do not expand Stage 1 beyond the locked ordinal/arithmetic set.

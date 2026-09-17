@@ -377,8 +377,8 @@ parameters; record or array function results; `file of record`.
 
 ## Follow-on (beyond M7)
 
-- [Milestone 8 — Pascal runtime library](08-pascal-runtime-library.md) (standard functions,
-  console I/O fidelity, then file I/O).
+- [Milestone 8 — Pascal runtime library](08-pascal-runtime-library.md) (ordinal/arithmetic
+  functions, console I/O fidelity, then file I/O; transcendentals when a math module exists).
 - Units and separate compilation.
 - Sets, pointers (file I/O is owned by M8 Stage 3 after the host FS façade — see
   **Why Pascal `file` I/O waits** above).

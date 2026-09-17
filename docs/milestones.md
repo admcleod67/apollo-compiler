@@ -4,8 +4,9 @@ This document is an **orienting roadmap**. Priorities and scope may change as Ap
 the Gemini System evolve.
 
 **Current priority:** [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
-(standard functions, console I/O fidelity, then file I/O). The Milestone 7 dialect skeleton
-is complete. Further source languages remain deferred as
+(ordinal/arithmetic functions, then console I/O fidelity, then file I/O; transcendentals
+when a math module exists). The Milestone 7 dialect skeleton is complete. Further source
+languages remain deferred as
 [Milestone 9](milestones/09-multi-language-expansion.md).
 
 ## Milestone index
