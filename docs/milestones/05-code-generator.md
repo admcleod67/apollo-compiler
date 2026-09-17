@@ -31,7 +31,7 @@ It complements:
 - Expose emission from the driver (`apolloc --emit` / `--tbc`); keep `--ir` as the
   inspect-IR path.
 - Leave standalone host packaging, language-module `.so` shipping, Pascal language
-  completeness, and multi-language front-ends out of this milestone (Milestones 6–8).
+  completeness, and multi-language front-ends out of this milestone (Milestones 6–9).
 - Leave `main` green after each stage (`cmake` build + `ctest`).
 
 ### Language / codegen scope (v1)
@@ -453,7 +453,7 @@ Carried into codegen awareness (not all must close in M5):
 - Standalone host VM packaging (Milestone 6).
 - Shipping Pascal `.so` language module as Apollo’s product (M6 steady state).
 - Pascal Wirth console completeness (Milestone 7).
-- Additional source languages (Milestone 8, deferred).
+- Additional source languages (Milestone 9, deferred).
 - Heavy optimization / register allocation.
 - In-process PickVM link as the primary deliverable.
 

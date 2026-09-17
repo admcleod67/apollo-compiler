@@ -3,9 +3,10 @@
 This document is an **orienting roadmap**. Priorities and scope may change as Apollo and
 the Gemini System evolve.
 
-**Current priority:** Pascal dialect is complete through
-[Milestone 7](milestones/07-pascal-language-completeness.md). Further source languages remain
-deferred as [Milestone 8](milestones/08-multi-language-expansion.md).
+**Current priority:** [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
+(standard functions, console I/O fidelity, then file I/O). The Milestone 7 dialect skeleton
+is complete. Further source languages remain deferred as
+[Milestone 9](milestones/09-multi-language-expansion.md).
 
 ## Milestone index
 
@@ -20,7 +21,9 @@ prefixes sort lexicographically).
 - [Milestone 5 — Code generator (completed)](milestones/05-code-generator.md)
 - [Milestone 6 — Standalone VM execution (completed)](milestones/06-standalone-vm-execution.md)
 - [Milestone 7 — Pascal language completeness (completed)](milestones/07-pascal-language-completeness.md)
-- [Milestone 8 — Multi-language expansion (deferred)](milestones/08-multi-language-expansion.md)
+- [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
+- [Milestone 9 — Multi-language expansion (deferred)](milestones/09-multi-language-expansion.md)
 
 **Release checkpoint:** Milestone 7 is complete. The toolchain reports `0.7.0`; cut
-git tag `v0.7.0` when ready. Multi-language expansion remains deferred as Milestone 8.
+git tag `v0.7.0` when ready. Next active work is Milestone 8. Multi-language expansion
+remains deferred as Milestone 9.

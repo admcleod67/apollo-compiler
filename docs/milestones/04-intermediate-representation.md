@@ -51,7 +51,7 @@ Aligned with the Pascal subset already parsed and checked in M2/M3:
   SSA construction if not required for v1, register allocation).
 - Records, sets, pointers, `file` I/O, `case` / `with` / `goto` (unless forced by a fixture;
   default remains out).
-- Second language front-ends targeting the IR (Milestone 8, deferred).
+- Second language front-ends targeting the IR (Milestone 9, deferred).
 
 ### Milestone slices (summary)
 
@@ -405,7 +405,7 @@ See Stage 4 notes above and the cross-link under Milestone 3
 
 - `.tbc` / Gemini codegen (Milestone 5).
 - Standalone VM execution (Milestone 6).
-- Additional source languages (Milestone 8, deferred).
+- Additional source languages (Milestone 9, deferred).
 - Pascal Wirth console completeness (Milestone 7).
 - Heavy optimization / register allocation.
 

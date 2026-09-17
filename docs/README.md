@@ -16,5 +16,6 @@ sort in numeric order. See [`milestones/README.md`](milestones/README.md).
 - [Milestone 4 — Intermediate representation](milestones/04-intermediate-representation.md) (completed)
 - [Milestone 5 — Code generator](milestones/05-code-generator.md) (completed)
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) (completed)
-- [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md)
-- [Milestone 8 — Multi-language expansion](milestones/08-multi-language-expansion.md) (deferred)
+- [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md) (completed)
+- [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
+- [Milestone 9 — Multi-language expansion](milestones/09-multi-language-expansion.md) (deferred)

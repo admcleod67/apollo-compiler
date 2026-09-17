@@ -8,9 +8,11 @@ and bytecode VM; Apollo provides portable language front-ends and, over time, a 
 runtime path for Gemini applications outside the Gemini Pick OS.
 
 **Initial language:** Pascal — see [Pascal dialect](pascal-dialect.md) for supported
-behaviour; [Milestone 7](milestones/07-pascal-language-completeness.md) for delivery notes.  
+behaviour; [Milestone 7](milestones/07-pascal-language-completeness.md) for the dialect
+delivery notes; [Milestone 8](milestones/08-pascal-runtime-library.md) for the next
+runtime-library track.  
 **Long-term languages (deferred):** BASIC, COMAL, Fortran, COBOL
-([Milestone 8](milestones/08-multi-language-expansion.md))
+([Milestone 9](milestones/09-multi-language-expansion.md))
 
 ## High-level goals
 
@@ -72,6 +74,7 @@ text from the book is used directly; only the conceptual methodology informs the
 - [Milestones](milestones.md) — roadmap index
 - [Milestone 5 — Code generator](milestones/05-code-generator.md) — completed
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) — completed
-- [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md)
-- [Milestone 8 — Multi-language expansion](milestones/08-multi-language-expansion.md) (deferred)
+- [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md) — completed
+- [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
+- [Milestone 9 — Multi-language expansion](milestones/09-multi-language-expansion.md) (deferred)
 - Draft VM consumer notes (for handoff): [`for-gemini/apollo-consumer-notes.md`](for-gemini/apollo-consumer-notes.md)

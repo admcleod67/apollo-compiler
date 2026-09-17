@@ -185,3 +185,6 @@ apolloc --emit examples/primes.pas
 Feature-oriented samples live under [`examples/`](../examples/). When this overview and
 the compiler disagree, trust `apolloc --check` / `--emit` and the Pascal tests; update
 this document if behaviour is intentional.
+
+Runtime library growth (standard functions, console fidelity, file I/O) is tracked as
+[Milestone 8](milestones/08-pascal-runtime-library.md).

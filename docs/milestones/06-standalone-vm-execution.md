@@ -198,6 +198,5 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
   lived in gemini-system (steady-state drop-in module).
 - Optional later extraction of the portable runtime into a shared package/repo if
   cross-project dependency pain justifies it.
-- [Milestone 7 — Pascal language completeness](07-pascal-language-completeness.md)
-  (Wirth console / Pascal80-style; next language priority).
-- [Milestone 8 — Multi-language expansion](08-multi-language-expansion.md) (deferred).
+- [Milestone 8 — Pascal runtime library](08-pascal-runtime-library.md) (next).
+- [Milestone 9 — Multi-language expansion](09-multi-language-expansion.md) (deferred).

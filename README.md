@@ -7,8 +7,8 @@ environment and bytecode VM; Apollo builds portable language front-ends that com
 
 | | |
 |---|---|
-| **Initial language** | Pascal (Wirth console / Pascal80-style completeness next) |
-| **Later languages** | BASIC, COMAL, Fortran, COBOL (deferred — Milestone 8) |
+| **Initial language** | Pascal (runtime library / I/O next — Milestone 8) |
+| **Later languages** | BASIC, COMAL, Fortran, COBOL (deferred — Milestone 9) |
 | **Target** | Gemini VM bytecode (`.tbc` text format) |
 
 ## Design philosophy
@@ -29,9 +29,10 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 5 — Code generator** is complete (`0.5.0`).
 **Milestone 6 — Standalone VM execution** is complete (`0.6.0`).
 **Milestone 7 — Pascal language completeness** is complete (`0.7.0`).
+Next: [Milestone 8 — Pascal runtime library](docs/milestones/08-pascal-runtime-library.md).
 Toolchain version is `0.7.0` (`PROJECT_VERSION`); cut git tag `v0.7.0` when ready.
-Multi-language expansion remains [deferred](docs/milestones/08-multi-language-expansion.md)
-as Milestone 8.
+Multi-language expansion remains [deferred](docs/milestones/09-multi-language-expansion.md)
+as Milestone 9.
 
 ## Supported dialect
 
@@ -156,8 +157,8 @@ apollo-compiler/
   (including an in-tree BASIC compiler). The Pick-independent **`gemini-vm`** runner
   executes Apollo `.tbc` with console I/O (Milestone 6).
 - **Apollo** aims for clean, modular front-ends sharing a common IR and Gemini backend.
-  Near-term focus is Pascal language completeness (Milestone 7); further languages are
-  deferred (Milestone 8).
+  Near-term focus is the Pascal runtime library (Milestone 8); further languages are
+  deferred (Milestone 9).
 
 Emit **`.tbc` text** so programs load on Gemini’s existing bytecode parser without a hard
 build-time link to `gemini-core`. Linking against PickVM for in-process tests remains an
