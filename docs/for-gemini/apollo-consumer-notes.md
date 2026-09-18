@@ -18,6 +18,42 @@ could simplify bytecode, improve performance, or unlock features front-ends may 
 This file is a **consumer backlog**, not a specification change. **Normative VM behavior**
 remains whatever the VM project documents as authoritative for opcodes and runtime semantics.
 
+**Layering intent:** put **language-neutral host/VM primitives** in the core (or host
+façade); keep **dialect-shaped** behaviour (Pascal field widths, `eof`/`eoln` policy, …)
+in a drop-in language module / `CALL_FUNC` path. Prefer **additive** opcodes over changing
+existing `PRINT_VAL` / `DIM_ARRAY` / `MAT_*` semantics (Pick BASIC compatibility).
+
+---
+
+## Near-term ask (post–Milestone 8 Stage 1)
+
+Apollo has shipped **compiler-lowered** Wirth ordinal/arithmetic functions (`ord`, `chr`,
+`succ`, `pred`, `odd`, `abs`, `sqr`, `trunc`, `round`) without a language module. The next
+Pascal track is **console I/O fidelity** (Milestone 8 Stage 2). A **small** VM spike would
+unblock that work for every emitter.
+
+These are **asks**, not opcode encodings. If accepted, document them in Gemini’s normative
+VM docs, then Apollo can switch its binding table in a separate change.
+
+| Priority | Ask | Friction today | Suggested shape (illustrative) |
+|----------|-----|----------------|--------------------------------|
+| **P0** | Print a **glyph** from an integer code point | Pascal `char` is stored as `PUSH_INT`; `writeln(c)` / `writeln(' ')` use `PRINT_VAL` → decimal (`65`, `32`) instead of `A` / space | Additive **`PRINT_CHAR`** (pop int, write one character), **or** a documented 1-char-string convention that emitters can rely on |
+| **P1** | **Float input** | `readln` of `real` → `INPUT_STR` + parse via multiply/`strtod` | **`INPUT_FLT`** aligned with `INPUT_INT` / `INPUT_STR` |
+| **P2** | Explicit **int → float** widen | `ConvertF64` emits `LOAD` + `PUSH_FLT 1.0` + `MUL` | **`COERCE_FLT`** (mirror of `COERCE_INT`) |
+| **P3** | Core **integer mod** | `mod` expands to a div/mul/sub sequence | **`MOD`** / **`IMOD`** with documented truncated vs floored semantics |
+
+**Explicitly not in this near-term spike**
+
+- Softening or redefining `DIM_ARRAY` / `MAT_COPY` / `MAT_INIT` (requires new opcode or ABI
+  version if BASIC invariants must hold).
+- Pascal field widths / TP-style real formatting → language module or later binding, once
+  glyph print and float I/O exist.
+- Host filesystem façade / Pascal `file` I/O (still a larger Gemini host track).
+- Transcendental math (`sin`, `sqrt`, …) → Pascal Stage 1b via module / shared math surface.
+
+**After the spike ships:** Apollo Milestone 8 Stage 2 updates the console binding table
+(and dialect notes); no front-end IR rewrite required for P0–P2.
+
 ---
 
 ## How to read the backlog
@@ -73,6 +109,7 @@ ship in runners, then optionally simplify compiler output in a separate change.
 - Helps any language with array value parameters or bulk copy, not only Pascal.
 
 **Priority:** *performance* and *ergonomics* (Apollo is already correct without this).
+Not part of the near-term spike — see **BASIC / Pick compatibility** if changing `MAT_*`.
 
 ---
 
@@ -120,12 +157,11 @@ ship in runners, then optionally simplify compiler output in a separate change.
 - `mod` → expanded stack sequence (Turbo-style truncated division semantics).
 - Real contexts widen integers before `/` and other real operations.
 - `readln(real)` → read string, parse to double.
+- Stage 1 `trunc` / integer `abs` already use core **`COERCE_INT`** / **`ABS_INT`**.
 
 **Possible direction**
 
-- Optional **`MOD`** (or **`IMOD`**) with documented truncated vs floored semantics.
-- Optional **`COERCE_FLT`** / explicit widen opcode to reduce boilerplate in `.tbc`.
-- **`INPUT_FLT`** or typed input helpers aligned with `INPUT_INT` / `INPUT_STR`.
+- See **Near-term ask**: **`INPUT_FLT`**, **`COERCE_FLT`**, optional **`MOD`/`IMOD`**.
 - Document or stabilize **mixed-type arithmetic rules** if opcodes should not depend on
   implicit stack typing.
 
@@ -133,7 +169,7 @@ ship in runners, then optionally simplify compiler output in a separate change.
 
 - Shorter bytecode, clearer semantics for all numeric front-ends.
 
-**Priority:** *ergonomics* (quality of life; Apollo already emits working sequences).
+**Priority:** *ergonomics* (P1–P3 in the near-term table).
 
 ---
 
@@ -143,6 +179,8 @@ ship in runners, then optionally simplify compiler output in a separate change.
 
 - A **bootstrap** path maps Pascal `write` / `writeln` / `read` / `readln` to core
   **`PRINT_*` / `INPUT_*` / `PRINT_EOL`** opcodes.
+- **`char` output:** values are ints on the stack; **`PRINT_VAL`** prints decimals, so
+  `writeln('A')` / `writeln(c)` show `65` rather than `A` (same for space → `32`).
 - **`PRINT_VAL`** formatting may not match Pascal field widths or default real formatting
   (known dialect deviations on the Apollo side).
 - A steady-state direction for multi-language runtimes: **`CALL_FUNC`** plus **drop-in
@@ -152,18 +190,21 @@ ship in runners, then optionally simplify compiler output in a separate change.
 
 - Console builtins via an opcode binding table; no Pascal shared library required for
   minimal hello-world programs on the standalone runner.
+- Ordinal/arithmetic standard functions are **compiler-lowered** (no module).
 
 **Possible direction**
 
-- Publish stable **namespace / function IDs** for a Pascal (or shared) I/O module.
-- Optional **formatting hooks** for reals, widths, and `write` vs `writeln` semantics.
+- See **Near-term ask P0**: glyph print as a **core** capability (not Pascal-only).
+- Publish stable **namespace / function IDs** for a Pascal (or shared) I/O module for
+  **dialect** behaviour (field widths, richer real formatting).
 - Keep **bootstrap opcodes** for minimal programs without modules installed.
 
 **Benefit**
 
 - Cleaner separation: VM core vs language-specific I/O; better dialect fidelity.
 
-**Priority:** *ergonomics* and *capability*.
+**Priority:** *capability* for glyph/`INPUT_FLT` (near-term); *ergonomics* for module
+formatting (after primitives exist).
 
 ---
 
@@ -178,7 +219,7 @@ ship in runners, then optionally simplify compiler output in a separate change.
 **Typical pattern today (Apollo)**
 
 - No Pascal file I/O in the supported dialect; waiting on a **host-agnostic filesystem
-  façade** before designing opcodes or module calls.
+  façade** before designing opcodes or module calls (Milestone 8 Stage 3).
 
 **Possible direction**
 
@@ -191,7 +232,7 @@ ship in runners, then optionally simplify compiler output in a separate change.
 
 - Unblocks `file of T`, `text`, and record files for Pascal and other languages.
 
-**Priority:** *capability* (large cross-cutting host + VM effort).
+**Priority:** *capability* (large cross-cutting host + VM effort; not near-term).
 
 ---
 
@@ -219,7 +260,7 @@ ship in runners, then optionally simplify compiler output in a separate change.
 ## Non-goals (Apollo’s perspective)
 
 - **Pascal-only opcodes** that do not generalize to other front-ends, unless they are thin
-  sugar over general mechanisms.
+  sugar over general mechanisms (glyph print and float I/O are **shared** asks).
 - **Breaking changes** to existing `.tbc` without version negotiation — Apollo keeps
   regression tests and golden fixtures tied to current opcode behavior.
 - **Replacing authoritative VM documentation** — consumer notes inform backlog only.
@@ -231,9 +272,9 @@ ship in runners, then optionally simplify compiler output in a separate change.
 The VM project documents new behavior in its normative spec. Compiler projects may then,
 in separate work:
 
-- Shorten emit (for example fewer opcodes before `CALL`).
+- Shorten emit (for example `COERCE_FLT` instead of `* 1.0`; `PRINT_CHAR` for `char` args).
 - Enable previously diagnosed features (for example `var` array parameters).
-- Adjust tests to match the new contract.
+- Adjust tests and [`pascal-dialect.md`](../pascal-dialect.md) to match the new contract.
 
 No Apollo release should **require** the changes listed in this document.
 
@@ -244,3 +285,4 @@ No Apollo release should **require** the changes listed in this document.
 | Date | Summary |
 |------|---------|
 | 2026-03 | Initial consumer backlog (optional VM simplifications; array value params use call-site dim/init/copy on today’s VM). |
+| 2026-09 | Near-term ask after M8 Stage 1: glyph/`PRINT_CHAR`, `INPUT_FLT`, optional `COERCE_FLT`/`MOD`; clarify core vs language-module layering; char-as-decimal `PRINT_VAL` friction. |
