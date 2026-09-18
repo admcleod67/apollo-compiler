@@ -222,9 +222,12 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         break;
     case Op::CallRuntime:
         out << " @" << instr.text;
-        for (const ValueId arg : instr.args) {
+        for (std::size_t i = 0; i < instr.args.size(); ++i) {
             out << ", ";
-            dumpValue(out, arg);
+            dumpValue(out, instr.args[i]);
+            if (i < instr.argTypes.size()) {
+                out << ':' << irTypeName(instr.argTypes[i]);
+            }
         }
         break;
     }

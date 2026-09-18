@@ -137,19 +137,10 @@ void emitUnaryNeg(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
     ctx.stackTop = result;
 }
 
-/// Gemini has no int → float opcode (only `CoerceInt` the other way), but any `double`
-/// operand forces a `double` result (`arithmeticResultValue` in the VM `Runtime`), and the
-/// product is exact for every `int32`. A single `COERCE_FLT` would replace this pair if
-/// the VM ever grows one.
+/// Widen Integer → Real via Gemini `COERCE_FLT`.
 void emitConvertF64(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
-    spillStackTop(ctx);
-    if (ctx.spilled.count(operand.id) == 0) {
-        ctx.fail("codegen: convert operand unavailable");
-        return;
-    }
-    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, operand));
-    ctx.writer.pushFlt(1.0);
-    ctx.writer.op("MUL");
+    ensureOnTop(ctx, operand);
+    ctx.writer.op("COERCE_FLT");
     ctx.stackTop = result;
 }
 
@@ -206,21 +197,15 @@ std::optional<std::int64_t> arrayLowBound(const irs::Function &function, const i
 }
 
 void emitMod(EmitCtx &ctx, irs::ValueId left, irs::ValueId right, irs::ValueId result) {
-    // a - (a div b) * b on the stack, using Gemini DIV (toward zero).
+    // Gemini `MOD`: truncated toward-zero remainder (Turbo-style), ints only.
     spillStackTop(ctx);
     if (ctx.spilled.count(left.id) == 0 || ctx.spilled.count(right.id) == 0) {
         ctx.fail("codegen: mod operands unavailable");
         return;
     }
-    const std::string a = mangleTemp(ctx.function.name, left);
-    const std::string b = mangleTemp(ctx.function.name, right);
-    ctx.writer.op("LOAD_VAR", a);
-    ctx.writer.op("LOAD_VAR", a);
-    ctx.writer.op("LOAD_VAR", b);
-    ctx.writer.op("DIV");
-    ctx.writer.op("LOAD_VAR", b);
-    ctx.writer.op("MUL");
-    ctx.writer.op("SUB");
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, left));
+    ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, right));
+    ctx.writer.op("MOD");
     ctx.stackTop = result;
 }
 
@@ -350,9 +335,15 @@ void emitStoreLocal(EmitCtx &ctx, const irs::Instr &instr) {
 void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
     const std::string &name = instr.text;
     if (name == "write" || name == "writeln") {
-        for (const irs::ValueId arg : instr.args) {
-            ensureOnTop(ctx, arg);
-            ctx.writer.op("PRINT_VAL");
+        for (std::size_t i = 0; i < instr.args.size(); ++i) {
+            ensureOnTop(ctx, instr.args[i]);
+            const irs::IrType argType =
+                i < instr.argTypes.size() ? instr.argTypes[i] : irs::IrType::Error;
+            if (argType == irs::IrType::Char) {
+                ctx.writer.op("PRINT_CHAR");
+            } else {
+                ctx.writer.op("PRINT_VAL");
+            }
             ctx.stackTop.reset();
         }
         if (name == "writeln") {
@@ -365,11 +356,7 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
         if (instr.type == irs::IrType::I32 || instr.type == irs::IrType::Bool) {
             ctx.writer.op("INPUT_INT");
         } else if (instr.type == irs::IrType::F64) {
-            // Gemini has no float input opcode; read the line and let the multiply below
-            // parse it (VM `coerceToDouble` runs `strtod` over string operands).
-            ctx.writer.op("INPUT_STR");
-            ctx.writer.pushFlt(1.0);
-            ctx.writer.op("MUL");
+            ctx.writer.op("INPUT_FLT");
         } else if (instr.type == irs::IrType::StringRef || instr.type == irs::IrType::Char) {
             ctx.writer.op("INPUT_STR");
         } else {

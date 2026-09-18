@@ -940,10 +940,13 @@ irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
 void lowerWriteCall(LowerCtx &ctx, const std::string &foldedName,
                     const std::vector<std::unique_ptr<ast::Expr>> &args) {
     std::vector<irs::ValueId> argValues;
+    std::vector<irs::IrType> argTypes;
     argValues.reserve(args.size());
+    argTypes.reserve(args.size());
     for (const auto &arg : args) {
         if (arg) {
             argValues.push_back(lowerExpr(ctx, *arg));
+            argTypes.push_back(toIrType(arg->type));
         }
     }
     irs::Instr call;
@@ -951,6 +954,7 @@ void lowerWriteCall(LowerCtx &ctx, const std::string &foldedName,
     call.type = irs::IrType::Void;
     call.text = foldedName;
     call.args = std::move(argValues);
+    call.argTypes = std::move(argTypes);
     ctx.block.body.push_back(std::move(call));
 }
 

@@ -138,7 +138,7 @@ Apollo IR already uses `CallRuntime` with folded names `write` / `writeln` / `re
 
 | Horizon | Mechanism |
 |---------|-----------|
-| **M5 v1 (bootstrap)** | Emit opcodes that exist in today’s Gemini VM (`PRINT_VAL` / `PRINT_INT` / `PRINT_STR`, `PRINT_EOL`, `INPUT_INT` / `INPUT_STR`, etc.) so hello/count run without waiting on a new opcode. Prefer `PRINT_VAL` + `PRINT_EOL` for writeln-shaped calls where types vary. |
+| **M5 v1 (bootstrap)** | Emit opcodes that exist in today’s Gemini VM (`PRINT_VAL` / `PRINT_CHAR` / `PRINT_INT` / `PRINT_STR`, `PRINT_EOL`, `INPUT_INT` / `INPUT_FLT` / `INPUT_STR`, etc.) so hello/count run without waiting on a language module. Prefer `PRINT_VAL` + `PRINT_EOL` for writeln-shaped calls where types vary; `PRINT_CHAR` for `char` args (M8 Stage 2). |
 | **Steady state (with Gemini)** | Emit **`CALL_FUNC`** (or the published equivalent) with namespace/function IDs from Gemini’s module ABI, once that opcode and Pascal module IDs are published. Keep the binding table as the single switch point. |
 
 Do **not** scatter Pick-specific I/O through the emitter. Ownership of the Pascal helper
@@ -257,9 +257,10 @@ produces runnable bytecode.
   `ensureOnTop` reloads a spilled temp before `STORE_VAR` / `PRINT_VAL`.
 - **Unary / logic:** `Neg` → `PUSH_INT 0` + load + `SUB`; `Not` → load + `PUSH_INT 0` +
   `EQ`; `And` → `MUL` on 0/1; `Or` → `ADD` then `NE` 0 (nonzero → 1).
-- **Console binding (v1):** `write` / `writeln` → per-arg `PRINT_VAL` (+ `PRINT_EOL` for
-  writeln); `read` / `readln` → `INPUT_INT` or `INPUT_STR` by result `IrType` (M4 emits
-  one runtime call per variable).
+- **Console binding (v1):** `write` / `writeln` → per-arg `PRINT_VAL` for int/real/string,
+  `PRINT_CHAR` for `char` (+ `PRINT_EOL` for writeln); `read` / `readln` → `INPUT_INT`,
+  `INPUT_FLT`, or `INPUT_STR` by result `IrType` (M4 emits one runtime call per variable).
+  Integer→real widen uses `COERCE_FLT`; integer `mod` uses `MOD` (M8 Stage 2).
 - **Unsupported in Stage 2:** `ConstF64`, `Mod`, `Copy`, `Call`, branches — diagnosed.
 
 **Status:** completed.
@@ -351,9 +352,9 @@ produces runnable bytecode.
   (`WILL_FAIL`), and `apolloc_tbc_hello` (alias coverage).
 - **Version:** toolchain already reports `0.5.0` (`PROJECT_VERSION`). Cutting git tag
   `v0.5.0` is a separate release follow-up, not part of this stage's code change.
-- **Console binding (v1, documented):** `write` / `writeln` → `PRINT_VAL` (+ `PRINT_EOL`);
-  `read` / `readln` → `INPUT_INT` / `INPUT_STR`. Steady-state switch to `CALL_FUNC` remains
-  a Gemini follow-on; see **Console I/O binding** above.
+- **Console binding (v1, documented):** `write` / `writeln` → `PRINT_VAL` / `PRINT_CHAR`
+  (+ `PRINT_EOL`); `read` / `readln` → `INPUT_INT` / `INPUT_FLT` / `INPUT_STR`. Steady-state
+  switch to `CALL_FUNC` remains a Gemini follow-on; see **Console I/O binding** above.
 
 **Status:** completed.
 

@@ -34,7 +34,7 @@ COMAL / Fortran / COBOL front-ends.
 |------|--------|
 | Dialect skeleton | Complete enough for console programs (see dialect doc) |
 | Builtins | Console I/O; Stage 1 ordinal/arithmetic functions |
-| Console formatting | VM default `PRINT_VAL`; no `write` field widths |
+| Console formatting | Stage 2 opcodes; no `write` field widths; real `PRINT_VAL` defaults may still differ |
 | `file` / `text` | Out of scope; keyword reserved |
 | Math / ordinal library | Stage 1 shipped; transcendentals still Stage 1b |
 
@@ -144,25 +144,43 @@ surface). Do **not** block Stage 1 on this slice.
 
 ### Stage 2 — Console I/O fidelity
 
-**Objective:** Make existing console builtins behave more like Pascal programmers expect,
-and optionally migrate off bootstrap opcodes.
+**Objective:** Make existing console builtins behave more like Pascal programmers expect
+by consuming Gemini M20 core opcodes in the emit binding table (no module migration).
 
-- Field widths / formatting for `write` / `writeln` where the VM or a module can support
-  them (or document remaining deviations clearly).
-- More faithful `real` input/output (for example dedicated float input if the VM adds it).
-- Optional: bind console I/O through `CALL_FUNC` + a Pascal (or shared) module when the
-  published ABI is ready; keep bootstrap `PRINT_*` / `INPUT_*` until then.
-- Optional: console `eof` / `eoln` on standard input if cheap; otherwise keep them with
-  Stage 3 files.
+**In this stage**
+
+| Pascal behaviour | Emit |
+|------------------|------|
+| `write` / `writeln` of `char` / char-literal | `PRINT_CHAR` (glyph, not decimal code) |
+| Other printable write args | `PRINT_VAL` (+ `PRINT_EOL` for writeln) |
+| `read` / `readln` of `real` | `INPUT_FLT` |
+| `Integer → Real` widen (`ConvertF64`) | `COERCE_FLT` |
+| Integer `mod` | `MOD` (Turbo truncated semantics) |
+
+**Explicit non-goals (Stage 2):** field widths (`write(x:8:2)`) and TP-style real
+formatting (document as remaining deviations); `CALL_FUNC` / language-module migration
+for console I/O; `eof` / `eoln` (Stage 3); softening `DIM_ARRAY` / `MAT_*`.
+
+**Prerequisite:** Gemini M20 opcodes (`PRINT_CHAR`, `INPUT_FLT`, `COERCE_FLT`, `MOD`) —
+met.
 
 **Acceptance criteria**
 
-- [ ] Dialect doc updated for formatting and I/O behaviour.
-- [ ] Regression tests for console builtins remain green; new fidelity cases where
+- [x] Dialect doc updated for formatting and I/O behaviour.
+- [x] Regression tests for console builtins remain green; new fidelity cases where
       behaviour changes.
-- [ ] If module binding lands, binding table is the single switch point (no IR rewrite).
+- [x] Binding table remains the single switch point (write arg types carried on
+      `CallRuntime`; no IR op redesign).
 
-**Status:** not started.
+**Stage 2 notes**
+
+- `CallRuntime` for write/writeln carries `argTypes` so emit can dispatch `PRINT_CHAR`
+  vs `PRINT_VAL`.
+- Remaining deviations: no Pascal field widths; real output still uses VM `PRINT_VAL`
+  defaults (for example `1.0` may print as `1`).
+- Bootstrap opcodes retained (no `CALL_FUNC` console path yet).
+
+**Status:** completed.
 
 ### Stage 3 — File I/O
 
@@ -191,7 +209,8 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 ## Success criteria (draft)
 
 - [x] Stage 1 standard functions usable in examples and tests.
-- [ ] Console I/O behaviour documented; major fidelity gaps closed or explicitly accepted.
+- [x] Console I/O behaviour documented; major fidelity gaps closed or explicitly accepted
+      (field widths / real print defaults remain documented deviations).
 - [ ] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
       path, with the Wirth math set named here.
 - [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
@@ -209,7 +228,7 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 |-------|--------|
 | Stage 1 — Standard functions | completed |
 | Stage 1b — Transcendental math | not started (blocked on language module / `CALL_FUNC`) |
-| Stage 2 — Console I/O fidelity | not started |
+| Stage 2 — Console I/O fidelity | completed |
 | Stage 3 — File I/O | not started (blocked on host FS) |
 
 ---

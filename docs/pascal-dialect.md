@@ -145,11 +145,12 @@ Builtins: `write`, `writeln`, `read`, `readln` (console only).
 
 - Printable arguments for write routines: integer, real, char, string (boolean is not
   accepted as a write argument).
-- `read` / `readln` of `real` reads a line as text and parses a floating value.
-- **Known deviations:** real output uses the VM’s default numeric formatting (for
+- `char` and char-literal arguments print as **glyphs** (for example `writeln('A')` →
+  `A`), not decimal code points.
+- `read` / `readln` of `real` uses float input (`INPUT_FLT`).
+- **Known deviations:** real output uses the VM’s default `PRINT_VAL` formatting (for
   example `1.0` may print as `1`). Pascal-style field widths such as `write(x:8:2)` are
-  not supported. Console fidelity is [Milestone 8](milestones/08-pascal-runtime-library.md)
-  Stage 2.
+  not supported.
 
 ---
 

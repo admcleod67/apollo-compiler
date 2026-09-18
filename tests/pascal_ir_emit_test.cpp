@@ -196,7 +196,7 @@ int main() {
         }
     }
 
-    // integer mod → DIV/MUL/SUB sequence
+    // integer mod → Gemini MOD opcode
     {
         ScanAnalyseLowerEmit run("mod.pas",
                                  "program ModDemo;\n"
@@ -206,9 +206,8 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("mod fixture should emit with zero diagnostics");
         }
-        if (!contains(run.tbc, "DIV") || !contains(run.tbc, "MUL") ||
-            !contains(run.tbc, "SUB")) {
-            return fail("mod fixture .tbc missing DIV/MUL/SUB remainder sequence");
+        if (!contains(run.tbc, "MOD")) {
+            return fail("mod fixture .tbc missing MOD opcode");
         }
     }
 
@@ -368,9 +367,9 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("integer to real widening should emit with zero diagnostics");
         }
-        // ConvertF64 widens by multiplying with 1.0 (Gemini has no int -> float opcode).
-        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL")) {
-            return fail("widening should emit a PUSH_FLT 1.0 / MUL pair");
+        // ConvertF64 widens via Gemini COERCE_FLT.
+        if (!contains(run.tbc, "COERCE_FLT")) {
+            return fail("widening should emit COERCE_FLT");
         }
     }
 
@@ -408,12 +407,12 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("real parameter fixture should emit with zero diagnostics");
         }
-        if (!contains(run.tbc, "PUSH_FLT 1.0\n    MUL") || !contains(run.tbc, "CALL half")) {
-            return fail("integer argument should widen before CALL");
+        if (!contains(run.tbc, "COERCE_FLT") || !contains(run.tbc, "CALL half")) {
+            return fail("integer argument should widen with COERCE_FLT before CALL");
         }
     }
 
-    // readln into a real reads a line and parses it (no float input opcode).
+    // readln into a real uses INPUT_FLT.
     {
         ScanAnalyseLowerEmit run("realread.pas",
                                  "program RealRead;\n"
@@ -425,8 +424,8 @@ int main() {
         if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
             return fail("readln of a real should emit with zero diagnostics");
         }
-        if (!contains(run.tbc, "INPUT_STR\n    PUSH_FLT 1.0\n    MUL")) {
-            return fail("readln of a real should parse the input line as a float");
+        if (!contains(run.tbc, "INPUT_FLT")) {
+            return fail("readln of a real should emit INPUT_FLT");
         }
     }
 
@@ -587,8 +586,27 @@ int main() {
             return fail("standard functions should emit");
         }
         if (!contains(run.tbc, "ABS_INT") || !contains(run.tbc, "COERCE_INT") ||
-            !contains(run.tbc, "MUL")) {
-            return fail("standard functions should emit ABS_INT / COERCE_INT / MUL");
+            !contains(run.tbc, "MUL") || !contains(run.tbc, "PRINT_CHAR")) {
+            return fail("standard functions should emit ABS_INT / COERCE_INT / MUL / PRINT_CHAR");
+        }
+    }
+
+    // Char literals and variables print as glyphs via PRINT_CHAR.
+    {
+        ScanAnalyseLowerEmit run("printchar.pas",
+                                 "program PrintChar;\n"
+                                 "var\n"
+                                 "  c: char;\n"
+                                 "begin\n"
+                                 "  c := 'A';\n"
+                                 "  writeln(c);\n"
+                                 "  writeln('B');\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("char print fixture should emit");
+        }
+        if (!contains(run.tbc, "PRINT_CHAR")) {
+            return fail("char write should emit PRINT_CHAR");
         }
     }
 

@@ -15,8 +15,7 @@ main:
     LOAD_VAR main$i
     STORE_VAR main$t3
     LOAD_VAR main$t3
-    PUSH_FLT 1.0
-    MUL
+    COERCE_FLT
     STORE_VAR main$t4
     LOAD_VAR main$t4
     STORE_VAR main$x

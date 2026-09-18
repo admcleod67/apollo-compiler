@@ -20,7 +20,7 @@ Sample Pascal programs for Apollo. Each file is self-contained and should pass
 | [`point.pas`](point.pas) | `record`, field select, whole-record assign | `3` |
 | [`case.pas`](case.pas) | `case` … `of` … `else` … `end` | `3` |
 | [`include_main.pas`](include_main.pas) | `{$I}` include (`include_helper.inc`) | `included` |
-| [`stdfuncs.pas`](stdfuncs.pas) | `ord`/`chr`/`succ`/`pred`/`odd`/`abs`/`sqr`/`trunc`/`round` | ordinal/arithmetic demos |
+| [`stdfuncs.pas`](stdfuncs.pas) | `ord`/`chr`/`succ`/`pred`/`odd`/`abs`/`sqr`/`trunc`/`round` | `65 A`, then ordinal/arithmetic demos |
 
 ## Compile and run
 

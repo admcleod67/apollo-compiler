@@ -15,12 +15,8 @@ main:
     PUSH_INT 5
     STORE_VAR main$t4
     LOAD_VAR main$t3
-    LOAD_VAR main$t3
     LOAD_VAR main$t4
-    DIV
-    LOAD_VAR main$t4
-    MUL
-    SUB
+    MOD
     STORE_VAR main$t5
     LOAD_VAR main$t5
     PRINT_VAL

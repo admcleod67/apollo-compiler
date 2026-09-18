@@ -46,8 +46,9 @@ and whole-array assign via `MAT_COPY`; procedures and functions (program-block o
 Wirth helpers `ord` / `chr` / `succ` / `pred` / `odd` / `abs` / `sqr` / `trunc` / `round`;
 `{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
 
-**Not yet (Milestone 8):** transcendental math (`sin`, `sqrt`, …), console formatting
-fidelity, then file I/O last (blocked on a host FS façade).
+**Not yet (Milestone 8):** transcendental math (`sin`, `sqrt`, …); Pascal field widths /
+TP-style real formatting; then file I/O last (blocked on a host FS façade). Char writes
+print as glyphs; `readln` of `real` uses float input.
 
 **Out of scope:** units; pointers; sets; nested subprograms; enclosing-scope
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`

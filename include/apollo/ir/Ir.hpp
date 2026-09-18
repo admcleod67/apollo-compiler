@@ -109,6 +109,8 @@ struct Instr {
     bool boolean{false};
     char character{'\0'};
     std::vector<ValueId> args;
+    /// Parallel to `args` for `CallRuntime` write/writeln (print dispatch by type).
+    std::vector<IrType> argTypes;
     /// For `Call`: dim/init/copy each value array formal before `CALL`.
     std::vector<ArrayCopySetup> matCopies;
 };
