@@ -564,5 +564,33 @@ int main() {
         }
     }
 
+    // Stage 1 standard functions emit expected opcodes.
+    {
+        ScanAnalyseLowerEmit run("stdemit.pas",
+                                 "program StdEmit;\n"
+                                 "var\n"
+                                 "  i: integer;\n"
+                                 "  r: real;\n"
+                                 "  c: char;\n"
+                                 "  b: boolean;\n"
+                                 "begin\n"
+                                 "  i := ord('A');\n"
+                                 "  c := chr(65);\n"
+                                 "  i := abs(-3);\n"
+                                 "  r := sqr(1.5);\n"
+                                 "  b := odd(i);\n"
+                                 "  i := trunc(r);\n"
+                                 "  i := round(-1.5);\n"
+                                 "  writeln(i, c);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("standard functions should emit");
+        }
+        if (!contains(run.tbc, "ABS_INT") || !contains(run.tbc, "COERCE_INT") ||
+            !contains(run.tbc, "MUL")) {
+            return fail("standard functions should emit ABS_INT / COERCE_INT / MUL");
+        }
+    }
+
     return 0;
 }

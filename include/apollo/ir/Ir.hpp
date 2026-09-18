@@ -34,6 +34,10 @@ enum class Op {
     Copy,
     /// Widen an integer-typed value in `a` to F64 (Pascal `Integer` → `Real`).
     ConvertF64,
+    /// Narrow an F64-typed value in `a` to I32 toward zero (Gemini `COERCE_INT`).
+    ConvertI32,
+    /// Absolute value of an I32 (Gemini `ABS_INT`).
+    Abs,
     LoadLocal,
     StoreLocal,
     DimArray,

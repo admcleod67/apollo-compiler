@@ -560,5 +560,86 @@ int main() {
         }
     }
 
+    // Stage 1 standard functions: types and diagnostics.
+    {
+        ScanAnalyse ok("stdfuncs.pas",
+                       "program StdFuncs;\n"
+                       "var\n"
+                       "  i: integer;\n"
+                       "  r: real;\n"
+                       "  c: char;\n"
+                       "  b: boolean;\n"
+                       "begin\n"
+                       "  i := ord('A');\n"
+                       "  c := chr(65);\n"
+                       "  i := succ(i);\n"
+                       "  i := pred(i);\n"
+                       "  b := odd(i);\n"
+                       "  i := abs(-3);\n"
+                       "  r := abs(-1.5);\n"
+                       "  i := sqr(3);\n"
+                       "  r := sqr(1.5);\n"
+                       "  i := trunc(3.7);\n"
+                       "  i := round(-1.5);\n"
+                       "  b := succ(false);\n"
+                       "  b := pred(true);\n"
+                       "end.\n");
+        if (ok.diagnostics.errorCount() != 0) {
+            return fail("standard functions should analyse cleanly");
+        }
+        if (apollo::pascal::ast::Expr *rhs = firstAssignRhs(*ok.program);
+            !rhs || apollo::pascal::canonicalTag(rhs->type) != apollo::pascal::TypeTag::Integer) {
+            return fail("ord should yield integer");
+        }
+    }
+    {
+        ScanAnalyse badArity("stdarity.pas",
+                             "program P; var i: integer; begin i := ord(); end.");
+        if (badArity.diagnostics.errorCount() == 0) {
+            return fail("ord without args should diagnose");
+        }
+    }
+    {
+        ScanAnalyse badType("stdtype.pas",
+                            "program P; var i: integer; begin i := abs(true); end.");
+        if (badType.diagnostics.errorCount() == 0) {
+            return fail("abs(true) should diagnose");
+        }
+    }
+    {
+        ScanAnalyse asStmt("stdstmt.pas", "program P; begin ord(1); end.");
+        if (asStmt.diagnostics.errorCount() == 0) {
+            return fail("ord as a statement should diagnose");
+        }
+    }
+    {
+        ScanAnalyse chrHi("chrhi.pas",
+                          "program P; var c: char; begin c := chr(256); end.");
+        if (chrHi.diagnostics.errorCount() == 0) {
+            return fail("chr(256) should diagnose");
+        }
+    }
+    {
+        ScanAnalyse chrNeg("chrneg.pas",
+                           "program P; var c: char; begin c := chr(-1); end.");
+        if (chrNeg.diagnostics.errorCount() == 0) {
+            return fail("chr(-1) should diagnose");
+        }
+    }
+    {
+        ScanAnalyse succTrue("succt.pas",
+                             "program P; var b: boolean; begin b := succ(true); end.");
+        if (succTrue.diagnostics.errorCount() == 0) {
+            return fail("succ(true) should diagnose");
+        }
+    }
+    {
+        ScanAnalyse predFalse("predf.pas",
+                              "program P; var b: boolean; begin b := pred(false); end.");
+        if (predFalse.diagnostics.errorCount() == 0) {
+            return fail("pred(false) should diagnose");
+        }
+    }
+
     return 0;
 }

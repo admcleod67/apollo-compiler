@@ -43,10 +43,11 @@ VM programs:
 char, string; flat `record`; `array [lo..hi] of T` (const bounds); value array parameters
 and whole-array assign via `MAT_COPY`; procedures and functions (program-block only);
 `if` / `while` / `repeat` / `for` / `case`; `write` / `writeln` / `read` / `readln`;
+Wirth helpers `ord` / `chr` / `succ` / `pred` / `odd` / `abs` / `sqr` / `trunc` / `round`;
 `{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
 
-**Not yet (Milestone 8):** Wirth standard functions (`ord`, `chr`, `abs`, `sqr`, …),
-console formatting fidelity, then file I/O last (blocked on a host FS façade).
+**Not yet (Milestone 8):** transcendental math (`sin`, `sqrt`, …), console formatting
+fidelity, then file I/O last (blocked on a host FS façade).
 
 **Out of scope:** units; pointers; sets; nested subprograms; enclosing-scope
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`

@@ -40,9 +40,9 @@ std::string foldAsciiLower(std::string_view text) {
 }
 
 TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr);
-void checkCall(AnalyseCtx &ctx, std::string_view name,
-               std::vector<std::unique_ptr<ast::Expr>> &args,
-               apollo::common::SourceLocation location, bool asExpression);
+TypePtr checkCall(AnalyseCtx &ctx, std::string_view name,
+                  std::vector<std::unique_ptr<ast::Expr>> &args,
+                  apollo::common::SourceLocation location, bool asExpression);
 void checkStmt(AnalyseCtx &ctx, ast::Stmt &stmt);
 
 TypePtr resolveDenoter(SymbolTable &table, ast::TypeDenoter &denoter,
@@ -464,9 +464,9 @@ void checkUserCallArgs(AnalyseCtx &ctx, const Symbol &callee,
     }
 }
 
-void checkBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
-                      std::vector<std::unique_ptr<ast::Expr>> &args,
-                      apollo::common::SourceLocation location) {
+void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
+                             std::vector<std::unique_ptr<ast::Expr>> &args,
+                             apollo::common::SourceLocation location) {
     const std::string name = foldAsciiLower(callee.name);
     const bool isWrite = name == "write" || name == "writeln";
     const bool isRead = name == "read" || name == "readln";
@@ -521,16 +521,170 @@ void checkBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
                                        "argument type not readable for '" + callee.name + "'");
             }
         }
-        return;
+    }
+}
+
+bool isConsoleBuiltinName(std::string_view name) {
+    return name == "write" || name == "writeln" || name == "read" || name == "readln";
+}
+
+bool isStdFuncBuiltinName(std::string_view name) {
+    return name == "ord" || name == "chr" || name == "succ" || name == "pred" || name == "odd" ||
+           name == "abs" || name == "sqr" || name == "trunc" || name == "round";
+}
+
+/// Evaluate a compile-time integer constant without diagnosing non-constants.
+std::optional<std::int64_t> tryEvalConstIntSilent(SymbolTable &table, const ast::Expr *expr) {
+    if (!expr) {
+        return std::nullopt;
+    }
+    if (expr->kind == ast::ExprKind::Group) {
+        return tryEvalConstIntSilent(table, expr->left.get());
+    }
+    if (expr->kind == ast::ExprKind::IntegerLiteral) {
+        try {
+            return std::stoll(expr->text);
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+    if (expr->kind == ast::ExprKind::Unary && expr->unaryOp == ast::UnaryOp::Minus &&
+        expr->left) {
+        const auto inner = tryEvalConstIntSilent(table, expr->left.get());
+        if (!inner) {
+            return std::nullopt;
+        }
+        return -*inner;
+    }
+    if (expr->kind == ast::ExprKind::Identifier) {
+        const Symbol *found = table.lookup(expr->text);
+        if (found && found->kind == SymbolKind::Const && found->constExpr) {
+            return tryEvalConstIntSilent(table, found->constExpr);
+        }
+    }
+    return std::nullopt;
+}
+
+/// Evaluate a compile-time boolean constant without diagnosing non-constants.
+std::optional<bool> tryEvalConstBoolSilent(SymbolTable &table, const ast::Expr *expr) {
+    if (!expr) {
+        return std::nullopt;
+    }
+    if (expr->kind == ast::ExprKind::Group) {
+        return tryEvalConstBoolSilent(table, expr->left.get());
+    }
+    if (expr->kind == ast::ExprKind::Identifier) {
+        const std::string folded = foldAsciiLower(expr->text);
+        if (folded == "true") {
+            return true;
+        }
+        if (folded == "false") {
+            return false;
+        }
+        const Symbol *found = table.lookup(expr->text);
+        if (found && found->kind == SymbolKind::Const && found->constExpr) {
+            return tryEvalConstBoolSilent(table, found->constExpr);
+        }
+    }
+    return std::nullopt;
+}
+
+TypePtr checkStdFuncCall(AnalyseCtx &ctx, const Symbol &callee,
+                         std::vector<std::unique_ptr<ast::Expr>> &args,
+                         apollo::common::SourceLocation location) {
+    const std::string name = foldAsciiLower(callee.name);
+    if (args.size() != 1 || !args[0]) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "'" + callee.name + "' requires exactly one argument");
+        return makeError();
+    }
+
+    ast::Expr &arg = *args[0];
+    if (isError(arg.type)) {
+        return makeError();
+    }
+    const TypeTag tag = canonicalTag(arg.type);
+
+    if (name == "ord") {
+        if (tag != TypeTag::Integer && tag != TypeTag::Char && tag != TypeTag::Boolean) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'ord' argument must be integer, char, or boolean");
+            return makeError();
+        }
+        return makePredefined(TypeTag::Integer);
+    }
+
+    if (name == "chr") {
+        if (tag != TypeTag::Integer) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'chr' argument must be integer");
+            return makeError();
+        }
+        if (const auto value = tryEvalConstIntSilent(ctx.table, &arg);
+            value && (*value < 0 || *value > 255)) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'chr' constant argument must be in 0..255");
+        }
+        return makePredefined(TypeTag::Char);
+    }
+
+    if (name == "succ" || name == "pred") {
+        if (tag != TypeTag::Integer && tag != TypeTag::Char && tag != TypeTag::Boolean) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'" + callee.name +
+                                       "' argument must be integer, char, or boolean");
+            return makeError();
+        }
+        if (tag == TypeTag::Boolean) {
+            if (const auto value = tryEvalConstBoolSilent(ctx.table, &arg)) {
+                if (name == "succ" && *value) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           arg.range.begin, "'succ(true)' is out of range");
+                }
+                if (name == "pred" && !*value) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           arg.range.begin, "'pred(false)' is out of range");
+                }
+            }
+        }
+        return arg.type ? arg.type : makePredefined(tag);
+    }
+
+    if (name == "odd") {
+        if (tag != TypeTag::Integer) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'odd' argument must be integer");
+            return makeError();
+        }
+        return makePredefined(TypeTag::Boolean);
+    }
+
+    if (name == "abs" || name == "sqr") {
+        if (tag != TypeTag::Integer && tag != TypeTag::Real) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'" + callee.name + "' argument must be integer or real");
+            return makeError();
+        }
+        return arg.type ? arg.type : makePredefined(tag);
+    }
+
+    if (name == "trunc" || name == "round") {
+        if (tag != TypeTag::Real) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'" + callee.name + "' argument must be real");
+            return makeError();
+        }
+        return makePredefined(TypeTag::Integer);
     }
 
     ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
                            "unsupported builtin '" + callee.name + "'");
+    return makeError();
 }
 
-void checkCall(AnalyseCtx &ctx, std::string_view name,
-               std::vector<std::unique_ptr<ast::Expr>> &args,
-               apollo::common::SourceLocation location, bool asExpression) {
+TypePtr checkCall(AnalyseCtx &ctx, std::string_view name,
+                  std::vector<std::unique_ptr<ast::Expr>> &args,
+                  apollo::common::SourceLocation location, bool asExpression) {
     for (auto &arg : args) {
         if (arg) {
             (void)typeExpr(ctx, *arg);
@@ -541,17 +695,33 @@ void checkCall(AnalyseCtx &ctx, std::string_view name,
     if (!found) {
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
                                "undeclared identifier '" + std::string(name) + "'");
-        return;
+        return makeError();
     }
+
+    const std::string folded = foldAsciiLower(found->name);
 
     switch (found->kind) {
     case SymbolKind::Builtin:
-        if (asExpression) {
-            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
-                                   "'" + std::string(name) + "' cannot be used as a value");
+        if (isConsoleBuiltinName(folded)) {
+            if (asExpression) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'" + std::string(name) + "' cannot be used as a value");
+            }
+            checkConsoleBuiltinCall(ctx, *found, args, location);
+            return makeError();
         }
-        checkBuiltinCall(ctx, *found, args, location);
-        break;
+        if (isStdFuncBuiltinName(folded)) {
+            if (!asExpression) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'" + std::string(name) +
+                                           "' cannot be used as a statement");
+                return makeError();
+            }
+            return checkStdFuncCall(ctx, *found, args, location);
+        }
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "unsupported builtin '" + found->name + "'");
+        return makeError();
     case SymbolKind::Procedure:
         if (asExpression) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
@@ -559,14 +729,14 @@ void checkCall(AnalyseCtx &ctx, std::string_view name,
                                        "' cannot be used as a value");
         }
         checkUserCallArgs(ctx, *found, args, location);
-        break;
+        return makeError();
     case SymbolKind::Function:
         checkUserCallArgs(ctx, *found, args, location);
-        break;
+        return found->type ? found->type : makeError();
     default:
         ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
                                "'" + std::string(name) + "' is not callable");
-        break;
+        return makeError();
     }
 }
 
@@ -854,13 +1024,7 @@ TypePtr typeExpr(AnalyseCtx &ctx, ast::Expr &expr) {
     }
 
     case ast::ExprKind::Call: {
-        checkCall(ctx, expr.text, expr.args, expr.range.begin, /*asExpression=*/true);
-        const Symbol *found = ctx.table.lookup(expr.text);
-        if (found && found->kind == SymbolKind::Function) {
-            result = found->type ? found->type : makeError();
-        } else {
-            result = makeError();
-        }
+        result = checkCall(ctx, expr.text, expr.args, expr.range.begin, /*asExpression=*/true);
         break;
     }
 
@@ -1290,7 +1454,9 @@ SymbolTable analyse(ast::Program &program,
     seedPredefinedTypes(table, program.range.begin);
     seedBooleanConsts(table, program.range.begin);
 
-    static constexpr const char *kBuiltins[] = {"write", "writeln", "read", "readln"};
+    static constexpr const char *kBuiltins[] = {
+        "write", "writeln", "read", "readln", "ord",  "chr",   "succ", "pred",
+        "odd",   "abs",     "sqr",  "trunc",  "round"};
     for (const char *builtin : kBuiltins) {
         (void)table.declare(SymbolKind::Builtin, builtin, program.range.begin, makeError());
     }

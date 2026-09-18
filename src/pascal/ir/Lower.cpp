@@ -257,6 +257,11 @@ irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr);
 void lowerStmt(LowerCtx &ctx, const ast::Stmt &stmt);
 irs::ValueId emitLoad(LowerCtx &ctx, irs::Operand source, irs::IrType type);
 void emitStore(LowerCtx &ctx, irs::Operand dest, irs::ValueId value);
+std::string newLabel(LowerCtx &ctx, const char *prefix);
+void sealBlock(LowerCtx &ctx, irs::Terminator term);
+void beginBlock(LowerCtx &ctx, std::string label);
+irs::Terminator branchTo(std::string target);
+irs::Terminator branchIfTo(irs::ValueId cond, std::string trueTarget, std::string falseTarget);
 
 void emitArrayCopy(LowerCtx &ctx, irs::Operand dest, irs::Operand src) {
     irs::Instr instr;
@@ -722,9 +727,136 @@ irs::ValueId lowerBinary(LowerCtx &ctx, const ast::Expr &expr) {
     return emitBinaryOp(ctx, toBinaryOp(expr.binaryOp), left, right, resultType);
 }
 
+irs::Operand declareTempLocal(LowerCtx &ctx, const char *prefix, irs::IrType type) {
+    const std::string name = std::string(prefix) + std::to_string(ctx.blockCounter++);
+    const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
+    ctx.function.locals.push_back(irs::Local{name, type});
+    return makeLocalOperand(slot);
+}
+
+/// Half away from zero: add ±0.5 by sign, then ConvertI32.
+irs::ValueId lowerRound(LowerCtx &ctx, irs::ValueId value) {
+    const irs::Operand dest = declareTempLocal(ctx, "$round.", irs::IrType::I32);
+    const irs::ValueId zero = emitConstF64(ctx, 0.0);
+    const irs::ValueId ge =
+        emitBinaryOp(ctx, irs::Op::CmpGe, value, zero, irs::IrType::Bool);
+    const std::string posLabel = newLabel(ctx, "round.pos.");
+    const std::string negLabel = newLabel(ctx, "round.neg.");
+    const std::string mergeLabel = newLabel(ctx, "round.merge.");
+
+    sealBlock(ctx, branchIfTo(ge, posLabel, negLabel));
+
+    beginBlock(ctx, posLabel);
+    {
+        const irs::ValueId half = emitConstF64(ctx, 0.5);
+        const irs::ValueId sum = emitBinaryOp(ctx, irs::Op::Add, value, half, irs::IrType::F64);
+        const irs::ValueId truncated =
+            emitUnaryOp(ctx, irs::Op::ConvertI32, sum, irs::IrType::I32);
+        emitStore(ctx, dest, truncated);
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    beginBlock(ctx, negLabel);
+    {
+        const irs::ValueId half = emitConstF64(ctx, -0.5);
+        const irs::ValueId sum = emitBinaryOp(ctx, irs::Op::Add, value, half, irs::IrType::F64);
+        const irs::ValueId truncated =
+            emitUnaryOp(ctx, irs::Op::ConvertI32, sum, irs::IrType::I32);
+        emitStore(ctx, dest, truncated);
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    beginBlock(ctx, mergeLabel);
+    return emitLoad(ctx, dest, irs::IrType::I32);
+}
+
+irs::ValueId lowerAbsReal(LowerCtx &ctx, irs::ValueId value) {
+    const irs::Operand dest = declareTempLocal(ctx, "$abs.", irs::IrType::F64);
+    const irs::ValueId zero = emitConstF64(ctx, 0.0);
+    const irs::ValueId lt =
+        emitBinaryOp(ctx, irs::Op::CmpLt, value, zero, irs::IrType::Bool);
+    const std::string negLabel = newLabel(ctx, "abs.neg.");
+    const std::string posLabel = newLabel(ctx, "abs.pos.");
+    const std::string mergeLabel = newLabel(ctx, "abs.merge.");
+
+    sealBlock(ctx, branchIfTo(lt, negLabel, posLabel));
+
+    beginBlock(ctx, negLabel);
+    {
+        const irs::ValueId negated = emitUnaryOp(ctx, irs::Op::Neg, value, irs::IrType::F64);
+        emitStore(ctx, dest, negated);
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    beginBlock(ctx, posLabel);
+    {
+        emitStore(ctx, dest, value);
+        sealBlock(ctx, branchTo(mergeLabel));
+    }
+
+    beginBlock(ctx, mergeLabel);
+    return emitLoad(ctx, dest, irs::IrType::F64);
+}
+
+irs::ValueId lowerStdFuncCall(LowerCtx &ctx, const ast::Expr &expr) {
+    const std::string folded = foldAsciiLower(expr.text);
+    const irs::IrType resultType = toIrType(expr.type);
+    const irs::ValueId arg =
+        !expr.args.empty() && expr.args[0] ? lowerExpr(ctx, *expr.args[0]) : emitConstI32(ctx, 0);
+
+    if (folded == "ord") {
+        return emitUnaryOp(ctx, irs::Op::Copy, arg, irs::IrType::I32);
+    }
+    if (folded == "chr") {
+        return emitUnaryOp(ctx, irs::Op::Copy, arg, irs::IrType::Char);
+    }
+    if (folded == "succ") {
+        const irs::ValueId one = emitConstI32(ctx, 1);
+        return emitBinaryOp(ctx, irs::Op::Add, arg, one, resultType);
+    }
+    if (folded == "pred") {
+        const irs::ValueId one = emitConstI32(ctx, 1);
+        return emitBinaryOp(ctx, irs::Op::Sub, arg, one, resultType);
+    }
+    if (folded == "odd") {
+        const irs::ValueId two = emitConstI32(ctx, 2);
+        const irs::ValueId rem = emitBinaryOp(ctx, irs::Op::Mod, arg, two, irs::IrType::I32);
+        const irs::ValueId zero = emitConstI32(ctx, 0);
+        return emitBinaryOp(ctx, irs::Op::CmpNe, rem, zero, irs::IrType::Bool);
+    }
+    if (folded == "sqr") {
+        return emitBinaryOp(ctx, irs::Op::Mul, arg, arg, resultType);
+    }
+    if (folded == "abs") {
+        if (resultType == irs::IrType::F64) {
+            return lowerAbsReal(ctx, arg);
+        }
+        return emitUnaryOp(ctx, irs::Op::Abs, arg, irs::IrType::I32);
+    }
+    if (folded == "trunc") {
+        return emitUnaryOp(ctx, irs::Op::ConvertI32, arg, irs::IrType::I32);
+    }
+    if (folded == "round") {
+        return lowerRound(ctx, arg);
+    }
+
+    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
+                           "IR lowering: unsupported standard function '" + expr.text + "'");
+    return emitConstI32(ctx, 0);
+}
+
+bool isStdFuncName(std::string_view folded) {
+    return folded == "ord" || folded == "chr" || folded == "succ" || folded == "pred" ||
+           folded == "odd" || folded == "abs" || folded == "sqr" || folded == "trunc" ||
+           folded == "round";
+}
+
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
-    // Builtins are statement-only per M3 (never valid as an expression), so a Call
-    // Expr here is always a user function call.
+    const std::string folded = foldAsciiLower(expr.text);
+    if (isStdFuncName(folded)) {
+        return lowerStdFuncCall(ctx, expr);
+    }
+    // User function call (console builtins are statement-only).
     std::vector<irs::ArrayCopySetup> matCopies;
     return lowerUserCall(ctx, expr.text,
                          lowerCallArgs(ctx, expr.text, expr.args, &matCopies), toIrType(expr.type),

@@ -153,6 +153,18 @@ void emitConvertF64(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
     ctx.stackTop = result;
 }
 
+void emitConvertI32(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
+    ensureOnTop(ctx, operand);
+    ctx.writer.op("COERCE_INT");
+    ctx.stackTop = result;
+}
+
+void emitAbsInt(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
+    ensureOnTop(ctx, operand);
+    ctx.writer.op("ABS_INT");
+    ctx.stackTop = result;
+}
+
 void emitUnaryNot(EmitCtx &ctx, irs::ValueId operand, irs::ValueId result) {
     spillStackTop(ctx);
     if (ctx.spilled.count(operand.id) == 0) {
@@ -492,6 +504,14 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
         emitConvertF64(ctx, operandValue(instr.a), instr.result);
         spillStackTop(ctx);
         break;
+    case irs::Op::ConvertI32:
+        emitConvertI32(ctx, operandValue(instr.a), instr.result);
+        spillStackTop(ctx);
+        break;
+    case irs::Op::Abs:
+        emitAbsInt(ctx, operandValue(instr.a), instr.result);
+        spillStackTop(ctx);
+        break;
     case irs::Op::Neg:
         emitUnaryNeg(ctx, operandValue(instr.a), instr.result);
         spillStackTop(ctx);
@@ -528,7 +548,9 @@ void emitInstr(EmitCtx &ctx, const irs::Instr &instr) {
         emitUserCall(ctx, instr);
         break;
     case irs::Op::Copy:
-        ctx.fail("codegen: Copy not supported yet");
+        ensureOnTop(ctx, operandValue(instr.a));
+        ctx.stackTop = instr.result;
+        spillStackTop(ctx);
         break;
     }
 }

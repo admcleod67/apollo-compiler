@@ -298,5 +298,39 @@ int main() {
         }
     }
 
+    // Stage 1 standard functions lower to IR ops.
+    {
+        ScanAnalyseLower run("stdfuncs.pas",
+                             "program StdFuncs;\n"
+                             "var\n"
+                             "  i: integer;\n"
+                             "  r: real;\n"
+                             "  c: char;\n"
+                             "  b: boolean;\n"
+                             "begin\n"
+                             "  i := ord('A');\n"
+                             "  c := chr(65);\n"
+                             "  i := succ(1);\n"
+                             "  i := pred(2);\n"
+                             "  b := odd(3);\n"
+                             "  i := abs(-4);\n"
+                             "  r := abs(-1.5);\n"
+                             "  i := sqr(3);\n"
+                             "  i := trunc(3.2);\n"
+                             "  i := round(1.5);\n"
+                             "end.\n");
+        if (run.diagnostics.errorCount() != 0) {
+            return fail("standard functions should lower cleanly");
+        }
+        if (!contains(run.dump, "copy") || !contains(run.dump, "abs") ||
+            !contains(run.dump, "convert.i32") || !contains(run.dump, "mod") ||
+            !contains(run.dump, "mul")) {
+            return fail("standard function IR dump missing expected ops");
+        }
+        if (!contains(run.dump, "round.pos.") || !contains(run.dump, "round.merge.")) {
+            return fail("round should lower to a BranchIf diamond");
+        }
+    }
+
     return 0;
 }

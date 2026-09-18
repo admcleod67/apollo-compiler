@@ -30,9 +30,9 @@ programs, types, variables, constants, or subprograms.
 `file` `goto` `in` `label` `nil` `packed` `set` `with`
 
 **Predeclared names** (ordinary identifiers, not scanner keywords):  
-`integer` `real` `boolean` `char`, and the builtins `write` `writeln` `read` `readln`.
-Wirth standard functions (`ord`, `chr`, `abs`, …) are **not** shipped yet; they are
-Milestone 8 Stage 1 (see [Standard functions](#standard-functions)).
+`integer` `real` `boolean` `char`, the console builtins `write` `writeln` `read` `readln`,
+and the Stage 1 standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc`
+`round` (see [Standard functions](#standard-functions)).
 
 ---
 
@@ -155,11 +155,22 @@ Builtins: `write`, `writeln`, `read`, `readln` (console only).
 
 ## Standard functions
 
-Not present yet. Console I/O is the only predeclared library. Planned Wirth helpers:
+Expression-valued Wirth helpers (not valid as statements). Console I/O remains
+statement-only (`write` / `writeln` / `read` / `readln`).
+
+| Function | Argument | Result | Notes |
+|----------|----------|--------|-------|
+| `ord(x)` | `integer`, `char`, or `boolean` | `integer` | `char` → code point; `boolean` → `0`/`1` |
+| `chr(n)` | `integer` | `char` | Constant `n` outside `0..255` is diagnosed; other values are unchecked |
+| `succ(x)` / `pred(x)` | `integer`, `char`, or `boolean` | same as `x` | Constant `succ(true)` / `pred(false)` diagnosed; variables unchecked |
+| `odd(i)` | `integer` | `boolean` | Uses Turbo-style truncated `mod` |
+| `abs(x)` / `sqr(x)` | `integer` or `real` | same as `x` | |
+| `trunc(x)` | `real` | `integer` | Toward zero |
+| `round(x)` | `real` | `integer` | Half away from zero (add `±0.5`, then trunc) |
 
 | Slice | Functions | Status |
 |-------|-----------|--------|
-| Ordinal / arithmetic | `ord`, `chr`, `succ`, `pred`, `odd`, `abs`, `sqr`, `trunc`, `round` | Milestone 8 Stage 1 |
+| Ordinal / arithmetic (above) | `ord` … `round` | Supported (Milestone 8 Stage 1) |
 | Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Milestone 8 Stage 1b (needs a math module) |
 | File status | `eof`, `eoln` | With file I/O (Stage 3); optional console later |
 

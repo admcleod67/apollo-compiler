@@ -49,6 +49,10 @@ const char *opName(Op op) {
         return "copy";
     case Op::ConvertF64:
         return "convert.f64";
+    case Op::ConvertI32:
+        return "convert.i32";
+    case Op::Abs:
+        return "abs";
     case Op::LoadLocal:
         return "load.local";
     case Op::StoreLocal:
@@ -145,6 +149,8 @@ void dumpInstr(std::ostream &out, const Instr &instr, int depth) {
         break;
     case Op::Copy:
     case Op::ConvertF64:
+    case Op::ConvertI32:
+    case Op::Abs:
     case Op::Neg:
     case Op::Not:
         out << ' ';

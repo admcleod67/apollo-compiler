@@ -250,6 +250,7 @@ set(APOLLO_EXAMPLE_PROGRAMS
     point
     case
     include_main
+    stdfuncs
 )
 foreach(name IN LISTS APOLLO_EXAMPLE_PROGRAMS)
     add_test(

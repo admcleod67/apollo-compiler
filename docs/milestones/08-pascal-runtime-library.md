@@ -33,10 +33,10 @@ COMAL / Fortran / COBOL front-ends.
 | Area | Status |
 |------|--------|
 | Dialect skeleton | Complete enough for console programs (see dialect doc) |
-| Builtins | Console I/O only |
+| Builtins | Console I/O; Stage 1 ordinal/arithmetic functions |
 | Console formatting | VM default `PRINT_VAL`; no `write` field widths |
 | `file` / `text` | Out of scope; keyword reserved |
-| Math / ordinal library | Not present (`abs`, `ord`, `sin`, …) |
+| Math / ordinal library | Stage 1 shipped; transcendentals still Stage 1b |
 
 ---
 
@@ -104,12 +104,24 @@ filesystem or transcendental math module.
 
 **Acceptance criteria**
 
-- [ ] Listed Stage 1 functions analyse, lower, and emit; wrong arity/types diagnose.
-- [ ] Examples and/or tests cover each function.
-- [ ] [`pascal-dialect.md`](../pascal-dialect.md) lists the supported set and gaps.
-- [ ] `ctest` green.
+- [x] Listed Stage 1 functions analyse, lower, and emit; wrong arity/types diagnose.
+- [x] Examples and/or tests cover each function.
+- [x] [`pascal-dialect.md`](../pascal-dialect.md) lists the supported set and gaps.
+- [x] `ctest` green.
 
-**Status:** not started.
+**Stage 1 notes (pinned)**
+
+- Implemented as expression-valued builtins; console I/O remains statement-only.
+- Lowered inline to IR (`Copy`, `Add`/`Sub`, `Mod`, `Mul`, `Abs`, `ConvertI32`, BranchIf
+  diamonds for `round` / real `abs`); emit uses `ABS_INT` and `COERCE_INT` where needed.
+- **`chr`:** constant arguments outside `0..255` diagnose; non-constant arguments are
+  unchecked (no bitwise mask opcode).
+- **`round`:** half away from zero — add `+0.5` or `-0.5` by sign, then `COERCE_INT`.
+- **`succ`/`pred` on boolean:** constant `succ(true)` / `pred(false)` diagnose; variables
+  are unchecked (same philosophy as array bounds).
+- **`odd`:** `(i mod 2) <> 0` with Turbo truncated `mod`.
+
+**Status:** completed.
 
 ### Stage 1b — Transcendental math (module-gated)
 
@@ -178,16 +190,16 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 
 ## Success criteria (draft)
 
-- [ ] Stage 1 standard functions usable in examples and tests.
+- [x] Stage 1 standard functions usable in examples and tests.
 - [ ] Console I/O behaviour documented; major fidelity gaps closed or explicitly accepted.
 - [ ] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
       path, with the Wirth math set named here.
 - [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
       **M8 may close after Stages 1–2** if the host FS façade has not arrived; Stage 3
       remains the home for files rather than a new milestone.
-- [ ] Multi-language expansion remains deferred as Milestone 9.
-- [ ] Dialect overview stays the user-facing source of truth for what is supported.
-- [ ] `ctest` green on a clean configure/build.
+- [x] Multi-language expansion remains deferred as Milestone 9.
+- [x] Dialect overview stays the user-facing source of truth for what is supported.
+- [x] `ctest` green on a clean configure/build.
 
 ---
 
@@ -195,7 +207,7 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 
 | Stage | Status |
 |-------|--------|
-| Stage 1 — Standard functions | not started |
+| Stage 1 — Standard functions | completed |
 | Stage 1b — Transcendental math | not started (blocked on language module / `CALL_FUNC`) |
 | Stage 2 — Console I/O fidelity | not started |
 | Stage 3 — File I/O | not started (blocked on host FS) |
