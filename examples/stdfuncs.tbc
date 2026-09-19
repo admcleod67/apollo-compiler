@@ -1,0 +1,302 @@
+main:
+    PUSH_INT 65
+    STORE_VAR main$t0
+    LOAD_VAR main$t0
+    STORE_VAR main$t1
+    LOAD_VAR main$t1
+    STORE_VAR main$i
+    PUSH_INT 65
+    STORE_VAR main$t2
+    LOAD_VAR main$t2
+    STORE_VAR main$t3
+    LOAD_VAR main$t3
+    STORE_VAR main$c
+    LOAD_VAR main$i
+    STORE_VAR main$t4
+    PUSH_INT 32
+    STORE_VAR main$t5
+    LOAD_VAR main$c
+    STORE_VAR main$t6
+    LOAD_VAR main$t4
+    PRINT_VAL
+    LOAD_VAR main$t5
+    PRINT_CHAR
+    LOAD_VAR main$t6
+    PRINT_CHAR
+    PRINT_EOL
+    PUSH_INT 10
+    STORE_VAR main$t7
+    PUSH_INT 1
+    STORE_VAR main$t8
+    LOAD_VAR main$t7
+    LOAD_VAR main$t8
+    ADD
+    STORE_VAR main$t9
+    LOAD_VAR main$t9
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t10
+    PUSH_INT 1
+    STORE_VAR main$t11
+    LOAD_VAR main$t10
+    LOAD_VAR main$t11
+    SUB
+    STORE_VAR main$t12
+    LOAD_VAR main$t12
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t13
+    PUSH_INT 2
+    STORE_VAR main$t14
+    LOAD_VAR main$t13
+    LOAD_VAR main$t14
+    MOD
+    STORE_VAR main$t15
+    PUSH_INT 0
+    STORE_VAR main$t16
+    LOAD_VAR main$t15
+    LOAD_VAR main$t16
+    NE
+    STORE_VAR main$t17
+    LOAD_VAR main$t17
+    STORE_VAR main$b
+    LOAD_VAR main$b
+    STORE_VAR main$t18
+    LOAD_VAR main$t18
+    JZ main$if.else.2
+    JUMP main$if.then.0
+main$if.then.0:
+    LOAD_VAR main$i
+    STORE_VAR main$t19
+    PUSH_STR " odd"
+    STORE_VAR main$t20
+    LOAD_VAR main$t19
+    PRINT_VAL
+    LOAD_VAR main$t20
+    PRINT_VAL
+    PRINT_EOL
+    JUMP main$if.end.1
+main$if.else.2:
+    LOAD_VAR main$i
+    STORE_VAR main$t21
+    PUSH_STR " even"
+    STORE_VAR main$t22
+    LOAD_VAR main$t21
+    PRINT_VAL
+    LOAD_VAR main$t22
+    PRINT_VAL
+    PRINT_EOL
+    JUMP main$if.end.1
+main$if.end.1:
+    PUSH_INT 7
+    STORE_VAR main$t23
+    PUSH_INT 0
+    LOAD_VAR main$t23
+    SUB
+    STORE_VAR main$t24
+    LOAD_VAR main$t24
+    ABS_INT
+    STORE_VAR main$t25
+    LOAD_VAR main$t25
+    STORE_VAR main$i
+    PUSH_FLT 2.5
+    STORE_VAR main$t26
+    PUSH_INT 0
+    LOAD_VAR main$t26
+    SUB
+    STORE_VAR main$t27
+    PUSH_FLT 0.0
+    STORE_VAR main$t28
+    LOAD_VAR main$t27
+    LOAD_VAR main$t28
+    LT
+    STORE_VAR main$t29
+    LOAD_VAR main$t29
+    JZ main$abs.pos.5
+    JUMP main$abs.neg.4
+main$abs.neg.4:
+    PUSH_INT 0
+    LOAD_VAR main$t27
+    SUB
+    STORE_VAR main$t30
+    LOAD_VAR main$t30
+    STORE_VAR main$$abs.3
+    JUMP main$abs.merge.6
+main$abs.pos.5:
+    LOAD_VAR main$t27
+    STORE_VAR main$$abs.3
+    JUMP main$abs.merge.6
+main$abs.merge.6:
+    LOAD_VAR main$$abs.3
+    STORE_VAR main$t31
+    LOAD_VAR main$t31
+    STORE_VAR main$r
+    LOAD_VAR main$i
+    STORE_VAR main$t32
+    PUSH_INT 32
+    STORE_VAR main$t33
+    LOAD_VAR main$r
+    STORE_VAR main$t34
+    LOAD_VAR main$t32
+    PRINT_VAL
+    LOAD_VAR main$t33
+    PRINT_CHAR
+    LOAD_VAR main$t34
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_INT 4
+    STORE_VAR main$t35
+    LOAD_VAR main$t35
+    LOAD_VAR main$t35
+    MUL
+    STORE_VAR main$t36
+    LOAD_VAR main$t36
+    STORE_VAR main$i
+    PUSH_FLT 1.5
+    STORE_VAR main$t37
+    LOAD_VAR main$t37
+    LOAD_VAR main$t37
+    MUL
+    STORE_VAR main$t38
+    LOAD_VAR main$t38
+    STORE_VAR main$r
+    LOAD_VAR main$i
+    STORE_VAR main$t39
+    PUSH_INT 32
+    STORE_VAR main$t40
+    LOAD_VAR main$r
+    STORE_VAR main$t41
+    LOAD_VAR main$t39
+    PRINT_VAL
+    LOAD_VAR main$t40
+    PRINT_CHAR
+    LOAD_VAR main$t41
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 3.9
+    STORE_VAR main$t42
+    LOAD_VAR main$t42
+    COERCE_INT
+    STORE_VAR main$t43
+    LOAD_VAR main$t43
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t44
+    LOAD_VAR main$t44
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 3.9
+    STORE_VAR main$t45
+    PUSH_INT 0
+    LOAD_VAR main$t45
+    SUB
+    STORE_VAR main$t46
+    LOAD_VAR main$t46
+    COERCE_INT
+    STORE_VAR main$t47
+    LOAD_VAR main$t47
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t48
+    LOAD_VAR main$t48
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 1.5
+    STORE_VAR main$t49
+    PUSH_FLT 0.0
+    STORE_VAR main$t50
+    LOAD_VAR main$t49
+    LOAD_VAR main$t50
+    GE
+    STORE_VAR main$t51
+    LOAD_VAR main$t51
+    JZ main$round.neg.9
+    JUMP main$round.pos.8
+main$round.pos.8:
+    PUSH_FLT 0.5
+    STORE_VAR main$t52
+    LOAD_VAR main$t49
+    LOAD_VAR main$t52
+    ADD
+    STORE_VAR main$t53
+    LOAD_VAR main$t53
+    COERCE_INT
+    STORE_VAR main$t54
+    LOAD_VAR main$t54
+    STORE_VAR main$$round.7
+    JUMP main$round.merge.10
+main$round.neg.9:
+    PUSH_FLT -0.5
+    STORE_VAR main$t55
+    LOAD_VAR main$t49
+    LOAD_VAR main$t55
+    ADD
+    STORE_VAR main$t56
+    LOAD_VAR main$t56
+    COERCE_INT
+    STORE_VAR main$t57
+    LOAD_VAR main$t57
+    STORE_VAR main$$round.7
+    JUMP main$round.merge.10
+main$round.merge.10:
+    LOAD_VAR main$$round.7
+    STORE_VAR main$t58
+    LOAD_VAR main$t58
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t59
+    LOAD_VAR main$t59
+    PRINT_VAL
+    PRINT_EOL
+    PUSH_FLT 1.5
+    STORE_VAR main$t60
+    PUSH_INT 0
+    LOAD_VAR main$t60
+    SUB
+    STORE_VAR main$t61
+    PUSH_FLT 0.0
+    STORE_VAR main$t62
+    LOAD_VAR main$t61
+    LOAD_VAR main$t62
+    GE
+    STORE_VAR main$t63
+    LOAD_VAR main$t63
+    JZ main$round.neg.13
+    JUMP main$round.pos.12
+main$round.pos.12:
+    PUSH_FLT 0.5
+    STORE_VAR main$t64
+    LOAD_VAR main$t61
+    LOAD_VAR main$t64
+    ADD
+    STORE_VAR main$t65
+    LOAD_VAR main$t65
+    COERCE_INT
+    STORE_VAR main$t66
+    LOAD_VAR main$t66
+    STORE_VAR main$$round.11
+    JUMP main$round.merge.14
+main$round.neg.13:
+    PUSH_FLT -0.5
+    STORE_VAR main$t67
+    LOAD_VAR main$t61
+    LOAD_VAR main$t67
+    ADD
+    STORE_VAR main$t68
+    LOAD_VAR main$t68
+    COERCE_INT
+    STORE_VAR main$t69
+    LOAD_VAR main$t69
+    STORE_VAR main$$round.11
+    JUMP main$round.merge.14
+main$round.merge.14:
+    LOAD_VAR main$$round.11
+    STORE_VAR main$t70
+    LOAD_VAR main$t70
+    STORE_VAR main$i
+    LOAD_VAR main$i
+    STORE_VAR main$t71
+    LOAD_VAR main$t71
+    PRINT_VAL
+    PRINT_EOL
+    HALT

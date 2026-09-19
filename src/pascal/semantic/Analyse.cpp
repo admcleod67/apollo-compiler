@@ -530,7 +530,13 @@ bool isConsoleBuiltinName(std::string_view name) {
 
 bool isStdFuncBuiltinName(std::string_view name) {
     return name == "ord" || name == "chr" || name == "succ" || name == "pred" || name == "odd" ||
-           name == "abs" || name == "sqr" || name == "trunc" || name == "round";
+           name == "abs" || name == "sqr" || name == "trunc" || name == "round" || name == "sqrt" ||
+           name == "sin" || name == "cos" || name == "arctan" || name == "ln" || name == "exp";
+}
+
+bool isMathStdFuncName(std::string_view name) {
+    return name == "sqrt" || name == "sin" || name == "cos" || name == "arctan" || name == "ln" ||
+           name == "exp";
 }
 
 /// Evaluate a compile-time integer constant without diagnosing non-constants.
@@ -675,6 +681,15 @@ TypePtr checkStdFuncCall(AnalyseCtx &ctx, const Symbol &callee,
             return makeError();
         }
         return makePredefined(TypeTag::Integer);
+    }
+
+    if (isMathStdFuncName(name)) {
+        if (tag != TypeTag::Integer && tag != TypeTag::Real) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, arg.range.begin,
+                                   "'" + callee.name + "' argument must be integer or real");
+            return makeError();
+        }
+        return makePredefined(TypeTag::Real);
     }
 
     ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
@@ -1455,8 +1470,9 @@ SymbolTable analyse(ast::Program &program,
     seedBooleanConsts(table, program.range.begin);
 
     static constexpr const char *kBuiltins[] = {
-        "write", "writeln", "read", "readln", "ord",  "chr",   "succ", "pred",
-        "odd",   "abs",     "sqr",  "trunc",  "round"};
+        "write", "writeln", "read", "readln", "ord",  "chr",    "succ",   "pred",
+        "odd",   "abs",     "sqr",  "trunc",  "round", "sqrt",  "sin",    "cos",
+        "arctan", "ln",     "exp"};
     for (const char *builtin : kBuiltins) {
         (void)table.declare(SymbolKind::Builtin, builtin, program.range.begin, makeError());
     }

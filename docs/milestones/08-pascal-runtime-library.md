@@ -36,7 +36,7 @@ COMAL / Fortran / COBOL front-ends.
 | Builtins | Console I/O; Stage 1 ordinal/arithmetic functions |
 | Console formatting | Stage 2 opcodes; no `write` field widths; real `PRINT_VAL` defaults may still differ |
 | `file` / `text` | Out of scope; keyword reserved |
-| Math / ordinal library | Stage 1 shipped; transcendentals still Stage 1b |
+| Math / ordinal library | Stage 1 + Stage 1b shipped (`tan` not provided) |
 
 ---
 
@@ -128,19 +128,36 @@ filesystem or transcendental math module.
 **Objective:** The remaining Jensen–Wirth arithmetic functions that need a real math
 runtime rather than a few IR ops.
 
-**Locked set:** `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` — each `real` → `real`.
+**Locked set:** `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` — each `real` → `real`
+(integer arguments widen). `tan` is not in the locked set (Gemini math id 3 unused).
 
-**Prerequisite:** a Pascal language module / `CALL_FUNC` path (or an equivalent VM math
-surface). Do **not** block Stage 1 on this slice.
+**Prerequisite:** Gemini shared **`math`** module / `CALL_FUNC` namespace **6** (Milestone 21)
+— met. Do **not** block Stage 1 on this slice.
 
 **Acceptance criteria**
 
-- [ ] Listed functions analyse, lower, and emit via the module/ABI path.
-- [ ] Wrong arity/types diagnose; domain errors follow documented runtime behaviour.
-- [ ] Dialect doc lists the supported math set.
-- [ ] `ctest` green.
+- [x] Listed functions analyse, lower, and emit via the module/ABI path.
+- [x] Wrong arity/types diagnose; domain errors follow documented runtime behaviour.
+- [x] Dialect doc lists the supported math set.
+- [x] `ctest` green.
 
-**Status:** not started (blocked on language module / `CALL_FUNC`).
+**Stage 1b notes**
+
+| Pascal | Emit |
+|--------|------|
+| `sqrt` | `CALL_FUNC 6, 0, 1` |
+| `sin` | `CALL_FUNC 6, 1, 1` |
+| `cos` | `CALL_FUNC 6, 2, 1` |
+| `arctan` | `CALL_FUNC 6, 4, 1` |
+| `ln` | `CALL_FUNC 6, 5, 1` |
+| `exp` | `CALL_FUNC 6, 6, 1` |
+
+- Angles are **radians**. Domain errors use Gemini’s `MATH:` prefix (`SQRT` / `LN`).
+- Programs that call these must load **`gemini-module-math`** (`gemini-vm --modules` or
+  bootstrap module path).
+- Lowered as value-producing `CallRuntime`; integer args widen via `COERCE_FLT`.
+
+**Status:** completed.
 
 ### Stage 2 — Console I/O fidelity
 
@@ -211,7 +228,7 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 - [x] Stage 1 standard functions usable in examples and tests.
 - [x] Console I/O behaviour documented; major fidelity gaps closed or explicitly accepted
       (field widths / real print defaults remain documented deviations).
-- [ ] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
+- [x] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
       path, with the Wirth math set named here.
 - [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
       **M8 may close after Stages 1–2** if the host FS façade has not arrived; Stage 3
@@ -227,7 +244,7 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 | Stage | Status |
 |-------|--------|
 | Stage 1 — Standard functions | completed |
-| Stage 1b — Transcendental math | not started (blocked on language module / `CALL_FUNC`) |
+| Stage 1b — Transcendental math | completed |
 | Stage 2 — Console I/O fidelity | completed |
 | Stage 3 — File I/O | not started (blocked on host FS) |
 

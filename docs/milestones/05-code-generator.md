@@ -109,7 +109,7 @@ emission from `apolloc` and freeze the contract for Milestone 6.
 | `And` / `Or` | Integer 0/1 bitwise-style sequences (document exact form in Stage 2 notes) |
 | `Cmp*` | `EQ`/`NE`/`LT`/`LE`/`GT`/`GE` |
 | `Call` (user) | `CALL <label>` after pushing args per calling convention |
-| `CallRuntime` | Binding table → `PRINT_*` / `INPUT_*` / `PRINT_EOL` (v1) or `CALL_FUNC` (when published) |
+| `CallRuntime` | Binding table → `PRINT_*` / `INPUT_*` / `PRINT_EOL` (console); math → `CALL_FUNC` ns `6` (M8 Stage 1b) |
 | `Branch` | `JUMP label` |
 | `BranchIf` | `JZ` / inverted-JZ sequence (document stack sense: Gemini `JZ` jumps on **zero**) |
 | `Return` | `RETURN` (non-`main`); `main` ends with `HALT` |

@@ -46,7 +46,11 @@ documented on the Gemini side.
   version if BASIC invariants must hold).
 - Pascal field widths / TP-style real formatting → language module or later binding.
 - Host filesystem façade / Pascal `file` I/O (Milestone 8 Stage 3).
-- Transcendental math (`sin`, `sqrt`, …) → Pascal Stage 1b via module / shared math surface.
+
+**Shared math (Gemini Milestone 21) — consumed by Apollo Stage 1b:** unary real→real
+`CALL_FUNC` under namespace **`math`** (`6`). Apollo binds six
+(`sqrt`/`sin`/`cos`/`arctan`/`ln`/`exp`); **`Tan`** remains unbound. Load
+`gemini-module-math`.
 
 ---
 
@@ -279,3 +283,4 @@ No Apollo release should **require** the changes listed in this document.
 | 2026-03 | Initial consumer backlog (optional VM simplifications; array value params use call-site dim/init/copy on today’s VM). |
 | 2026-09 | Near-term ask after M8 Stage 1: glyph/`PRINT_CHAR`, `INPUT_FLT`, optional `COERCE_FLT`/`MOD`; clarify core vs language-module layering; char-as-decimal `PRINT_VAL` friction. |
 | 2026-09 | Apollo M8 Stage 2 **consumed** Gemini M20 opcodes (`PRINT_CHAR`, `INPUT_FLT`, `COERCE_FLT`, `MOD`); field widths / real print defaults still deferred. |
+| 2026-09 | Apollo M8 Stage 1b **consumed** Gemini shared math (`CALL_FUNC` ns `6`; six Wirth funcs; `tan` unbound). |

@@ -641,5 +641,48 @@ int main() {
         }
     }
 
+    // Stage 1b transcendentals: types and diagnostics.
+    {
+        ScanAnalyse ok("stdmath.pas",
+                       "program StdMath;\n"
+                       "var\n"
+                       "  r: real;\n"
+                       "begin\n"
+                       "  r := sin(0.5);\n"
+                       "  r := sqrt(4);\n"
+                       "  r := cos(0.0);\n"
+                       "  r := arctan(1.0);\n"
+                       "  r := ln(2.0);\n"
+                       "  r := exp(1.0);\n"
+                       "end.\n");
+        if (ok.diagnostics.errorCount() != 0) {
+            return fail("transcendental functions should analyse cleanly");
+        }
+        if (apollo::pascal::ast::Expr *rhs = firstAssignRhs(*ok.program);
+            !rhs || apollo::pascal::canonicalTag(rhs->type) != apollo::pascal::TypeTag::Real) {
+            return fail("sin should yield real");
+        }
+    }
+    {
+        ScanAnalyse badArity("matharity.pas",
+                             "program P; var r: real; begin r := sin(); end.");
+        if (badArity.diagnostics.errorCount() == 0) {
+            return fail("sin without args should diagnose");
+        }
+    }
+    {
+        ScanAnalyse badType("mathtype.pas",
+                            "program P; var r: real; begin r := sqrt(true); end.");
+        if (badType.diagnostics.errorCount() == 0) {
+            return fail("sqrt(true) should diagnose");
+        }
+    }
+    {
+        ScanAnalyse asStmt("mathstmt.pas", "program P; begin sin(1.0); end.");
+        if (asStmt.diagnostics.errorCount() == 0) {
+            return fail("sin as a statement should diagnose");
+        }
+    }
+
     return 0;
 }

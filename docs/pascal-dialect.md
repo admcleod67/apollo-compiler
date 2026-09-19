@@ -31,8 +31,8 @@ programs, types, variables, constants, or subprograms.
 
 **Predeclared names** (ordinary identifiers, not scanner keywords):  
 `integer` `real` `boolean` `char`, the console builtins `write` `writeln` `read` `readln`,
-and the Stage 1 standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc`
-`round` (see [Standard functions](#standard-functions)).
+and the standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc` `round`
+`sqrt` `sin` `cos` `arctan` `ln` `exp` (see [Standard functions](#standard-functions)).
 
 ---
 
@@ -168,11 +168,12 @@ statement-only (`write` / `writeln` / `read` / `readln`).
 | `abs(x)` / `sqr(x)` | `integer` or `real` | same as `x` | |
 | `trunc(x)` | `real` | `integer` | Toward zero |
 | `round(x)` | `real` | `integer` | Half away from zero (add `±0.5`, then trunc) |
+| `sqrt(x)` / `sin(x)` / `cos(x)` / `arctan(x)` / `ln(x)` / `exp(x)` | `integer` or `real` | `real` | Radians; Gemini `math` module (`CALL_FUNC`); `tan` not provided |
 
 | Slice | Functions | Status |
 |-------|-----------|--------|
-| Ordinal / arithmetic (above) | `ord` … `round` | Supported (Milestone 8 Stage 1) |
-| Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Milestone 8 Stage 1b (needs a math module) |
+| Ordinal / arithmetic | `ord` … `round` | Supported (Milestone 8 Stage 1) |
+| Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Supported (Milestone 8 Stage 1b) |
 | File status | `eof`, `eoln` | With file I/O (Stage 3); optional console later |
 
 Not planned in Milestone 8: `new` / `dispose`, `pack` / `unpack`, `page`, Turbo string

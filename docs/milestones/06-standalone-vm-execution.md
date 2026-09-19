@@ -64,7 +64,8 @@ changing the Pascal front-end or Apollo IR.
 
 **v1 builtins in Apollo today** are console only: `write`, `writeln`, `read`, `readln`.
 Ordinal and arithmetic helpers (`ord`, `chr`, `abs`, …) and transcendental math
-(`sin`, `sqrt`, …) are [Milestone 8](08-pascal-runtime-library.md) Stages 1 and 1b.
+(`sin`, `sqrt`, …) are [Milestone 8](08-pascal-runtime-library.md) Stages 1 and 1b
+(Stage 1b emits `CALL_FUNC` against the shared **`math`** namespace).
 User `procedure` / `function` code is ordinary program code inside `.tbc`, not
 language-module entry points.
 

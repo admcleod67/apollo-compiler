@@ -839,6 +839,22 @@ irs::ValueId lowerStdFuncCall(LowerCtx &ctx, const ast::Expr &expr) {
     if (folded == "round") {
         return lowerRound(ctx, arg);
     }
+    if (folded == "sqrt" || folded == "sin" || folded == "cos" || folded == "arctan" ||
+        folded == "ln" || folded == "exp") {
+        irs::ValueId realArg = arg;
+        if (!expr.args.empty() && expr.args[0] && toIrType(expr.args[0]->type) == irs::IrType::I32) {
+            realArg = emitUnaryOp(ctx, irs::Op::ConvertF64, arg, irs::IrType::F64);
+        }
+        irs::Instr call;
+        call.op = irs::Op::CallRuntime;
+        call.type = irs::IrType::F64;
+        call.result = ctx.function.newTemp();
+        call.text = folded;
+        call.args = {realArg};
+        const irs::ValueId result = call.result;
+        ctx.block.body.push_back(std::move(call));
+        return result;
+    }
 
     ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, expr.range.begin,
                            "IR lowering: unsupported standard function '" + expr.text + "'");
@@ -848,7 +864,8 @@ irs::ValueId lowerStdFuncCall(LowerCtx &ctx, const ast::Expr &expr) {
 bool isStdFuncName(std::string_view folded) {
     return folded == "ord" || folded == "chr" || folded == "succ" || folded == "pred" ||
            folded == "odd" || folded == "abs" || folded == "sqr" || folded == "trunc" ||
-           folded == "round";
+           folded == "round" || folded == "sqrt" || folded == "sin" || folded == "cos" ||
+           folded == "arctan" || folded == "ln" || folded == "exp";
 }
 
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {

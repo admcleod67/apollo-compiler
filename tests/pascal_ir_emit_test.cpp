@@ -610,5 +610,38 @@ int main() {
         }
     }
 
+    // Stage 1b transcendentals emit CALL_FUNC into the shared math module.
+    {
+        ScanAnalyseLowerEmit run("mathemit.pas",
+                                 "program MathEmit;\n"
+                                 "var\n"
+                                 "  r: real;\n"
+                                 "  i: integer;\n"
+                                 "begin\n"
+                                 "  r := sqrt(9.0);\n"
+                                 "  r := sin(0.0);\n"
+                                 "  r := cos(0.0);\n"
+                                 "  r := arctan(1.0);\n"
+                                 "  r := ln(1.0);\n"
+                                 "  r := exp(0.0);\n"
+                                 "  i := 4;\n"
+                                 "  r := sqrt(i);\n"
+                                 "end.\n");
+        if (run.diagnostics.errorCount() != 0 || run.tbc.empty()) {
+            return fail("transcendental functions should emit");
+        }
+        if (!contains(run.tbc, "CALL_FUNC 6, 0, 1") || !contains(run.tbc, "CALL_FUNC 6, 1, 1") ||
+            !contains(run.tbc, "CALL_FUNC 6, 2, 1") || !contains(run.tbc, "CALL_FUNC 6, 4, 1") ||
+            !contains(run.tbc, "CALL_FUNC 6, 5, 1") || !contains(run.tbc, "CALL_FUNC 6, 6, 1")) {
+            return fail("math builtins should emit CALL_FUNC 6,<id>,1");
+        }
+        if (!contains(run.tbc, "COERCE_FLT")) {
+            return fail("integer sqrt argument should widen with COERCE_FLT");
+        }
+        if (contains(run.tbc, "CALL_FUNC 6, 3, 1")) {
+            return fail("tan must not be emitted");
+        }
+    }
+
     return 0;
 }

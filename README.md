@@ -43,12 +43,14 @@ VM programs:
 char, string; flat `record`; `array [lo..hi] of T` (const bounds); value array parameters
 and whole-array assign via `MAT_COPY`; procedures and functions (program-block only);
 `if` / `while` / `repeat` / `for` / `case`; `write` / `writeln` / `read` / `readln`;
-Wirth helpers `ord` / `chr` / `succ` / `pred` / `odd` / `abs` / `sqr` / `trunc` / `round`;
+Wirth helpers `ord` / `chr` / `succ` / `pred` / `odd` / `abs` / `sqr` / `trunc` / `round`
+and transcendentals `sqrt` / `sin` / `cos` / `arctan` / `ln` / `exp` (needs
+`gemini-module-math`);
 `{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
 
-**Not yet (Milestone 8):** transcendental math (`sin`, `sqrt`, …); Pascal field widths /
-TP-style real formatting; then file I/O last (blocked on a host FS façade). Char writes
-print as glyphs; `readln` of `real` uses float input.
+**Not yet (Milestone 8):** Pascal field widths / TP-style real formatting; then file I/O
+last (blocked on a host FS façade). Char writes print as glyphs; `readln` of `real` uses
+float input.
 
 **Out of scope:** units; pointers; sets; nested subprograms; enclosing-scope
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`

@@ -21,6 +21,7 @@ Sample Pascal programs for Apollo. Each file is self-contained and should pass
 | [`case.pas`](case.pas) | `case` … `of` … `else` … `end` | `3` |
 | [`include_main.pas`](include_main.pas) | `{$I}` include (`include_helper.inc`) | `included` |
 | [`stdfuncs.pas`](stdfuncs.pas) | `ord`/`chr`/`succ`/`pred`/`odd`/`abs`/`sqr`/`trunc`/`round` | `65 A`, then ordinal/arithmetic demos |
+| [`stdmath.pas`](stdmath.pas) | `sqrt`/`sin`/`cos`/`arctan`/`ln`/`exp` (needs `gemini-module-math`) | `3`, `0`, `1`, `0`, `0`, `1`, `2` |
 
 ## Compile and run
 

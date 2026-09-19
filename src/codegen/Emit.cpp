@@ -366,6 +366,23 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
         ctx.stackTop = instr.result;
         return;
     }
+    // Gemini shared math module (namespace 6 / math_function_ids.hpp). Tan (id 3) unbound.
+    static const std::pair<const char *, const char *> kMathFuncs[] = {
+        {"sqrt", "6, 0, 1"}, {"sin", "6, 1, 1"},    {"cos", "6, 2, 1"},
+        {"arctan", "6, 4, 1"}, {"ln", "6, 5, 1"}, {"exp", "6, 6, 1"},
+    };
+    for (const auto &[mathName, operand] : kMathFuncs) {
+        if (name == mathName) {
+            if (instr.args.size() != 1) {
+                ctx.fail("codegen: math runtime call '" + name + "' expects one argument");
+                return;
+            }
+            ensureOnTop(ctx, instr.args[0]);
+            ctx.writer.op("CALL_FUNC", operand);
+            ctx.stackTop = instr.result;
+            return;
+        }
+    }
     ctx.fail("codegen: unknown runtime call '" + name + "'");
 }
 
