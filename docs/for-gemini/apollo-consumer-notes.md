@@ -45,7 +45,9 @@ documented on the Gemini side.
 - Softening or redefining `DIM_ARRAY` / `MAT_COPY` / `MAT_INIT` (requires new opcode or ABI
   version if BASIC invariants must hold).
 - Pascal field widths / TP-style real formatting → language module or later binding.
-- Host filesystem façade / Pascal `file` I/O (Milestone 8 Stage 3).
+- Host filesystem façade / Pascal Wirth `file` / `text` I/O (Milestone 8 Stage 3;
+  [`pascal-file-io.md`](../pascal-file-io.md) Track A). PickDB / MultiValue API is a
+  separate later track.
 
 **Shared math (Gemini Milestone 21) — consumed by Apollo Stage 1b:** unary real→real
 `CALL_FUNC` under namespace **`math`** (`6`). Apollo binds six
@@ -209,23 +211,26 @@ module formatting (still open).
 
 - Pascal **`file` / `text`** I/O is a **language** feature but needs a **host** storage
   contract. A standalone runner may leave filesystem services unbound; Pick-shaped hosts
-  use a different path model.
+  use a different path model for MultiValue data.
 
 **Typical pattern today (Apollo)**
 
-- No Pascal file I/O in the supported dialect; waiting on a **host-agnostic filesystem
-  façade** before designing opcodes or module calls (Milestone 8 Stage 3).
+- No Pascal file I/O in the supported dialect; waiting on a **host-agnostic file-service
+  façade** before Milestone 8 Stage 3 (Wirth Track A). Pick database access is a
+  **separate** later module track (`PickDB`), not a substitute for Pascal files — see
+  [`pascal-file-io.md`](../pascal-file-io.md).
 
 **Possible direction**
 
-- Shared **FS façade** bindable from standalone and Pick backends (paths, open/read/write
-  or get/put, errors).
-- Later: VM opcodes or module calls that front-ends can target without hard-coding POSIX
-  or VOC paths.
+- Shared **file-service façade** for Wirth sequential I/O (paths, open/read/write or
+  get/put, errors); diagnose when unbound.
+- Separate **DB / Pick plugin** services for MultiValue APIs (BASIC today; Pascal
+  `PickDB` later). Whether Pick hosts also bind the Wirth façade remains open.
 
 **Benefit**
 
-- Unblocks `file of T`, `text`, and record files for Pascal and other languages.
+- Unblocks `file of T` / `text` without coupling the dialect to Pick records; keeps
+  authentic Pick access explicit.
 
 **Priority:** *capability* (large cross-cutting host + VM effort; not near-term).
 
@@ -284,3 +289,4 @@ No Apollo release should **require** the changes listed in this document.
 | 2026-09 | Near-term ask after M8 Stage 1: glyph/`PRINT_CHAR`, `INPUT_FLT`, optional `COERCE_FLT`/`MOD`; clarify core vs language-module layering; char-as-decimal `PRINT_VAL` friction. |
 | 2026-09 | Apollo M8 Stage 2 **consumed** Gemini M20 opcodes (`PRINT_CHAR`, `INPUT_FLT`, `COERCE_FLT`, `MOD`); field widths / real print defaults still deferred. |
 | 2026-09 | Apollo M8 Stage 1b **consumed** Gemini shared math (`CALL_FUNC` ns `6`; six Wirth funcs; `tan` unbound). |
+| 2026-10 | File I/O design: Wirth Track A (M8 Stage 3) vs later PickDB Track B; façade capability left open for Pick hosts ([`pascal-file-io.md`](../pascal-file-io.md)). |

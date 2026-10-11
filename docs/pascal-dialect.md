@@ -208,7 +208,8 @@ helpers) over a second complete `program` inside an include.
 - Turbo string helpers (`length`, `copy`, `pos`, …); `pack` / `unpack`; `page`
 
 `file` / `text` I/O is planned as [Milestone 8](milestones/08-pascal-runtime-library.md)
-Stage 3 after a host-agnostic filesystem façade; it is not supported today.
+Stage 3 against Gemini’s generic file-service façade; it is not supported today. Design
+split (Wirth files vs later Pick database API): [`pascal-file-io.md`](pascal-file-io.md).
 
 ---
 

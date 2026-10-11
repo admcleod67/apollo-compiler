@@ -110,6 +110,8 @@ Milestone 7 therefore adds **records** as in-memory Wirth structure (and a prere
 for a later `file of record`) but does **not** ship file I/O. Resume files only after
 Gemini exposes a host-agnostic FS surface that both `gemini-vm` and Pick hosts can bind —
 see also [Milestone 6 follow-on](06-standalone-vm-execution.md#follow-on-beyond-m6).
+Wirth files vs later Pick database API:
+[`pascal-file-io.md`](../pascal-file-io.md).
 
 ---
 

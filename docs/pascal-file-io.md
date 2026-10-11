@@ -1,284 +1,130 @@
-# Apollo Pascal and Gemini Pick Runtime Integration
+# Pascal file handling
 
-## Overview
+Design notes for Pascal durable storage in Apollo. This is **not** a language tutorial;
+supported behaviour, once shipped, will also appear in [`pascal-dialect.md`](pascal-dialect.md).
 
-Apollo Pascal will implement a standard Pascal language environment, including conventional Pascal file handling facilities where supported by the target runtime.
+Delivery is split into **two tracks**. Only Track A is [Milestone 8](milestones/08-pascal-runtime-library.md)
+Stage 3.
 
-When targeting the Gemini Pick System, standard Pascal file operations will not be available. Instead, programs will interact with the Pick database through a dedicated Pick runtime library that exposes Pick-native concepts and operations.
+| Track | What | Owner / timing |
+|-------|------|----------------|
+| **A — Wirth files** | `text`, `file`, `file of T`, sequential I/O against Gemini’s **generic file-service** interface | Apollo M8 Stage 3 (after host FS façade) |
+| **B — Pick database API** | Explicit Pick module (e.g. `PickDB`): `PickFile`, open/read/write/select, attr helpers | Later; Gemini Pick + Apollo module binding — **not** Stage 3 |
 
-This design preserves both:
+Pick MultiValue access does **not** replace Track A. Apollo implements the standard Pascal
+file model regardless of host. Whether a Pick personality ever **also** exposes Wirth
+`text` / `file of T` through the file-service façade is a **runtime capability** decision
+and is left open.
 
-- Standards-compliant Pascal semantics.
-- Authentic Pick database behaviour.
+---
 
-## Design Rationale
+## Track A — Wirth Pascal files (Milestone 8 Stage 3)
 
-Historically, Pick systems were not based around conventional hierarchical filesystems. Application developers worked directly with:
+### Goal
 
-- Files
-- Item IDs
-- Records
-- Attributes
-- Values
-- Select lists
+Standards-oriented sequential file I/O for teaching and console programs, independent of
+Pick storage concepts.
 
-The primary programming interface was the Pick database itself rather than stream-oriented file I/O.
+### Prerequisite
 
-Although languages such as COBOL, Pascal and C were available on some Pick implementations, database access was generally provided through runtime libraries rather than native language file abstractions.
+A host-agnostic **file-service façade** in Gemini that both the standalone runner and
+other hosts can bind (see Milestone 7 — *Why Pascal `file` I/O waits*). Apollo must not
+hard-wire POSIX paths or Pick VOC/MD paths in the front-end.
 
-Therefore, Apollo should expose Pick functionality explicitly rather than attempting to emulate standard Pascal files on top of Pick records.
+### Language surface (intent)
 
-## Runtime-Based Approach
+Exact Stage 3 pinning lives in the Milestone 8 Stage notes when implementation starts.
+Intentional core:
 
-Apollo remains a Pascal compiler regardless of target platform.
+| Area | Intent |
+|------|--------|
+| Types | `text`; `file of T` (scope of bare `file` pinned in Stage notes) |
+| Open / create | Sequential `reset` / `rewrite` (filename binding model pinned in Stage notes) |
+| Transfer | Typed / text `read` / `write` / `readln` / `writeln` as appropriate |
+| Status | `eof` / `eoln` where they apply |
+| Non-goals for Stage 3 | Turbo `BlockRead` / `BlockWrite`; random access; packing; units |
 
-The availability of file handling facilities is determined by the selected Gemini runtime personality.
+Console `read` / `write` remain the existing builtins; file forms are additional once
+types exist.
 
-### Gemini Native Runtime
+### Runtime contract
 
-Supports standard Pascal file operations.
+- Emit binds to Gemini’s **generic file-service** interface (opcodes and/or `CALL_FUNC`
+  IDs as published), not to a Pick-specific ABI.
+- If the host does **not** provide the required file services, Apollo should **diagnose**
+  (prefer compile-time / capability check over opaque runtime failure). That is a
+  capability gate, not a separate “Pick dialect” that removes Pascal file types from the
+  language.
 
-Examples:
-
-```pascal
-var
-  F : Text;
-  Customers : file of Customer;
-```
-
-Supported operations:
-
-```pascal
-Reset
-Rewrite
-Read
-ReadLn
-Write
-WriteLn
-BlockRead
-BlockWrite
-```
-
-### Gemini Pick Runtime
-
-Standard Pascal files are unavailable.
-
-Instead, the runtime provides Pick-specific types and functions.
-
-Examples:
+### Examples (illustrative)
 
 ```pascal
 var
-  Customers : PickFile;
-  Rec : String;
-```
-
-Supported operations:
-
-```pascal
-PickOpen
-PickRead
-PickWrite
-PickDelete
-PickSelect
-PickReadNext
-```
-
-## Why Standard Pascal Files Are Disabled
-
-Pick records do not map naturally onto Pascal file structures because:
-
-- Records are variable length.
-- Data is organised as attributes, values and subvalues.
-- Item IDs form part of the access model.
-- Dictionaries define interpretation of data.
-- Select lists are a core database concept.
-- Pick files are not stream-oriented.
-
-Attempting to treat Pick files as:
-
-```pascal
-file of RecordType
-```
-
-would introduce unnecessary complexity and obscure the underlying Pick model.
-
-## Preferred Programming Model
-
-Instead of:
-
-```pascal
-Assign(F, 'CUSTOMERS');
-Reset(F);
-```
-
-Pick applications should use explicit database operations:
-
-```pascal
-PickOpen('CUSTOMERS', Customers);
-
-if PickRead(Customers, '100123', Rec) then
+  F: text;
+  Customers: file of Customer;
 begin
-  WriteLn(Rec);
-end;
+  { reset / rewrite / read / write / eof / eoln — exact forms TBD in Stage 3 }
+end.
 ```
 
-This makes it immediately clear that the application is interacting with a MultiValue database rather than a conventional filesystem.
+---
 
-## Proposed Runtime API
+## Track B — Pick database API (later)
 
-### File Access
+### Goal
 
-```pascal
-function PickOpen(
-  const FileName : String;
-  var Handle : PickFile
-) : Boolean;
+Authentic Pick / MultiValue access for applications that need files, item IDs, records,
+attributes, values, and select lists — without pretending those are stream `file of T`.
 
-function PickRead(
-  Handle : PickFile;
-  const ItemId : String;
-  var RecordData : String
-) : Boolean;
+### Why not emulate with `file of T`
 
-function PickWrite(
-  Handle : PickFile;
-  const ItemId : String;
-  const RecordData : String
-) : Boolean;
+Pick records are variable length; data is organised as attributes / values / subvalues;
+item IDs and dictionaries are part of the access model; select lists are first-class;
+Pick files are not stream-oriented. Mapping that onto `file of RecordType` obscures the
+model and couples the Pascal dialect to one storage backend.
 
-function PickDelete(
-  Handle : PickFile;
-  const ItemId : String
-) : Boolean;
-```
+### Preferred model
 
-### Select Processing
+A dedicated module (working name **`PickDB`**) exposing Pick-native types and routines,
+backed by the Pick filesystem / database plugin — parallel to how shared **math** is a
+module, not a redefinition of language arithmetic.
 
-```pascal
-function PickSelect(
-  Handle : PickFile;
-  var List : PickSelectList
-) : Boolean;
-
-function PickReadNext(
-  List : PickSelectList;
-  var ItemId : String
-) : Boolean;
-```
-
-### Record Manipulation
-
-```pascal
-function GetAttr(
-  const RecordData : String;
-  AttrNo : Integer
-) : String;
-
-procedure SetAttr(
-  var RecordData : String;
-  AttrNo : Integer;
-  const Value : String
-);
-
-function GetValue(
-  const RecordData : String;
-  AttrNo : Integer;
-  ValueNo : Integer
-) : String;
-```
-
-These operations provide Pascal equivalents of common Pick BASIC operations without exposing attribute mark delimiters directly.
-
-## Compiler Behaviour
-
-Apollo should perform compile-time validation against the target runtime.
-
-For example:
+Illustrative API (names and signatures TBD when the track is scheduled):
 
 ```pascal
 var
-  F : Text;
+  Customers: PickFile;
+  Rec: string;
+  List: PickSelectList;
+begin
+  if PickOpen('CUSTOMERS', Customers) then
+    if PickRead(Customers, '100123', Rec) then
+      writeln(Rec);
+  { PickWrite, PickDelete, PickSelect, PickReadNext, GetAttr / SetAttr / GetValue, … }
+end.
 ```
 
-should compile successfully when targeting:
+### Shared VM services (Gemini)
+
+Language wrappers should sit on common record-management services usable by BASIC,
+Pascal (`PickDB`), and later languages — for example conceptual ops such as `DB.OPEN`,
+`DB.READ`, `DB.WRITE`, `DB.DELETE`, `DB.SELECT`, `DB.READNEXT` (exact ABI is Gemini’s).
+
+Track B does **not** require disabling Track A on Pick hosts. Programs that need the
+database use `PickDB`; programs that need Wirth files use Track A **if** the host
+exposes the file-service façade.
+
+---
+
+## Relationship summary
 
 ```text
-GEMINI_NATIVE
+Apollo Pascal language
+  ├── Track A: text / file of T  →  Gemini file-service façade  →  host backend
+  └── Track B: PickDB (later)    →  Gemini DB / Pick plugin      →  VOC/MD (etc.)
 ```
 
-but produce a compilation error when targeting:
-
-```text
-GEMINI_PICK
-```
-
-Example diagnostic:
-
-```text
-TEXT files are unavailable in target runtime GEMINI_PICK.
-Use PickFile and Pick database routines instead.
-```
-
-Compile-time validation is preferred over runtime failure because it makes platform restrictions explicit and predictable.
-
-## Internal VM Architecture
-
-The Gemini VM should expose a common record-management interface that can be used by multiple language runtimes.
-
-Example internal operations:
-
-```text
-DB.OPEN
-DB.READ
-DB.WRITE
-DB.DELETE
-DB.SELECT
-DB.READNEXT
-DB.LOCK
-DB.RELEASE
-```
-
-Language-specific runtimes become thin wrappers over these VM services.
-
-### Pick BASIC
-
-```basic
-READ REC FROM F,ID
-```
-
-### Apollo Pascal
-
-```pascal
-PickRead(F, ID, Rec)
-```
-
-### Future COBOL
-
-```cobol
-READ CUSTOMER-FILE RECORD
-```
-
-All ultimately invoke the same underlying VM database operations.
-
-## Benefits
-
-- Preserves standard Pascal behaviour.
-- Preserves authentic Pick database concepts.
-- Avoids artificial file abstractions.
-- Simplifies compiler implementation.
-- Supports future language integration.
-- Aligns with historical Pick development practices.
-- Fits naturally into Gemini's plugin-based filesystem architecture.
-
-## Conclusion
-
-Apollo Pascal should be implemented as a standards-oriented Pascal compiler whose available runtime features are determined by the selected Gemini target.
-
-When targeting Gemini Pick:
-
-- Standard Pascal file handling is not available.
-- Pick-specific database APIs are provided instead.
-- Applications work directly with Pick concepts such as files, item IDs, records and select lists.
-
-This approach accurately reflects how Pascal and other non-BASIC languages historically interacted with Pick systems while maintaining a clean and extensible Gemini architecture.
+- **Stage 3** implements Track A only.
+- Track B is platform integration, scheduled separately.
+- “Pascal files on Pick?” remains open at the façade/capability layer, not as a
+  language fork.

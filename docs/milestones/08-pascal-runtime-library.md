@@ -201,22 +201,32 @@ met.
 
 ### Stage 3 — File I/O
 
-**Objective:** Wirth-style `file` / `text` sequential I/O on a **host-agnostic** FS façade.
+**Objective:** Wirth-style `file` / `text` sequential I/O on Gemini’s **generic
+file-service** interface (host-agnostic façade). See
+[`pascal-file-io.md`](../pascal-file-io.md) **Track A**.
 
-**Prerequisite:** Gemini / host filesystem library usable from the standalone runner and
-Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Milestone 7 —
+**Prerequisite:** Gemini / host filesystem library usable from the standalone runner
+without hard-wiring POSIX or Pick VOC/MD paths in Apollo (see Milestone 7 —
 *Why Pascal `file` I/O waits*).
 
-- Types: `file of T`, `text` (scope pinned in Stage notes).
+- Types: `file of T`, `text` (scope of bare `file` pinned in Stage notes).
 - Operations: a minimal sequential set (for example `reset` / `rewrite`, typed
   `read` / `write`, `eof` / `eoln` as appropriate).
-- Builtin or module binding for file ops; diagnose unsupported forms clearly.
+- Builtin or module binding for file ops; **diagnose** when the host does not provide
+  the required file services (capability check, not a Pick-specific language fork).
+
+**Explicit non-goals (Stage 3):** Pick / MultiValue database API (`PickFile`,
+`PickOpen`, select lists, attr helpers) — that is **Track B** in
+[`pascal-file-io.md`](../pascal-file-io.md), scheduled later. Whether a Pick host ever
+exposes Wirth files through the façade remains a runtime capability decision.
 
 **Acceptance criteria**
 
 - [ ] Host FS façade available and documented on the VM side.
-- [ ] A small multi-file or file-I/O example `--emit`s and runs on the standalone runner.
-- [ ] Dialect doc describes supported file surface and non-goals.
+- [ ] A small file-I/O example `--emit`s and runs on the standalone runner (with modules /
+      façade bound as required).
+- [ ] Dialect doc and [`pascal-file-io.md`](../pascal-file-io.md) describe the supported
+      surface and non-goals.
 - [ ] `ctest` green.
 
 **Status:** not started (blocked on host FS).
@@ -263,7 +273,8 @@ Pick-backed hosts without hard-wiring POSIX or VOC paths in Apollo (see Mileston
 ## Out of scope reminders
 
 - Do not start Milestone 9 front-ends during M8.
-- Do not implement Pascal files against a Pick-only or POSIX-only path.
+- Do not implement Pascal files against a Pick-only or POSIX-only path; do not pull
+  PickDB / MultiValue APIs into Stage 3 (see [`pascal-file-io.md`](../pascal-file-io.md)).
 - Units, sets, and pointers remain separate follow-ons unless explicitly pulled into a
   stage.
 - Do not expand Stage 1 beyond the locked ordinal/arithmetic set.
