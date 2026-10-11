@@ -332,6 +332,18 @@ void emitStoreLocal(EmitCtx &ctx, const irs::Instr &instr) {
     ctx.stackTop.reset();
 }
 
+void emitChrTableInit(TbcWriter &writer) {
+    writer.comment("apollo byte table for typed file pack (str.fromByte)");
+    writer.pushInt(256);
+    writer.op("DIM_ARRAY", "__apollo$chr");
+    for (int i = 0; i < 256; ++i) {
+        const char ch = static_cast<char>(static_cast<unsigned char>(i));
+        writer.pushStr(std::string_view(&ch, 1));
+        writer.pushInt(i + 1);
+        writer.op("STORE_ARR", "__apollo$chr");
+    }
+}
+
 void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
     const std::string &name = instr.text;
     if (name == "write" || name == "writeln") {
@@ -382,6 +394,102 @@ void emitCallRuntime(EmitCtx &ctx, const irs::Instr &instr) {
             ctx.stackTop = instr.result;
             return;
         }
+    }
+    // Gemini hostfs module (namespace 7 / hostfs_function_ids.hpp).
+    static const std::pair<const char *, const char *> kHostFsFuncs[] = {
+        {"hostfs.openRead", "7, 0, 1"},  {"hostfs.openWrite", "7, 1, 1"},
+        {"hostfs.read", "7, 3, 2"},      {"hostfs.write", "7, 4, 2"},
+        {"hostfs.close", "7, 5, 1"},
+    };
+    for (const auto &[hostName, operand] : kHostFsFuncs) {
+        if (name == hostName) {
+            spillStackTop(ctx);
+            for (const irs::ValueId arg : instr.args) {
+                if (ctx.spilled.count(arg.id) == 0) {
+                    ctx.fail("codegen: hostfs arg unavailable for '" + name + "'");
+                    return;
+                }
+                ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, arg));
+            }
+            ctx.writer.op("CALL_FUNC", operand);
+            ctx.stackTop = instr.result;
+            return;
+        }
+    }
+    if (name == "str.concat") {
+        if (instr.args.size() != 2) {
+            ctx.fail("codegen: str.concat expects two arguments");
+            return;
+        }
+        spillStackTop(ctx);
+        ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, instr.args[0]));
+        ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, instr.args[1]));
+        ctx.writer.op("CONCAT");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "str.seq") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: str.seq expects one argument");
+            return;
+        }
+        ensureOnTop(ctx, instr.args[0]);
+        ctx.writer.op("SEQ_STR");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "str.fromByte") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: str.fromByte expects one argument");
+            return;
+        }
+        spillStackTop(ctx);
+        ctx.writer.op("LOAD_VAR", mangleTemp(ctx.function.name, instr.args[0]));
+        ctx.writer.pushInt(1);
+        ctx.writer.op("ADD");
+        ctx.writer.op("LOAD_ARR", "__apollo$chr");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "basic.str") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: basic.str expects one argument");
+            return;
+        }
+        ensureOnTop(ctx, instr.args[0]);
+        ctx.writer.op("CALL_FUNC", "2, 20, 1");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "basic.len") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: basic.len expects one argument");
+            return;
+        }
+        ensureOnTop(ctx, instr.args[0]);
+        ctx.writer.op("CALL_FUNC", "2, 3, 1");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "coerce.int") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: coerce.int expects one argument");
+            return;
+        }
+        ensureOnTop(ctx, instr.args[0]);
+        ctx.writer.op("COERCE_INT");
+        ctx.stackTop = instr.result;
+        return;
+    }
+    if (name == "coerce.flt") {
+        if (instr.args.size() != 1) {
+            ctx.fail("codegen: coerce.flt expects one argument");
+            return;
+        }
+        ensureOnTop(ctx, instr.args[0]);
+        ctx.writer.op("COERCE_FLT");
+        ctx.stackTop = instr.result;
+        return;
     }
     ctx.fail("codegen: unknown runtime call '" + name + "'");
 }
@@ -658,13 +766,54 @@ bool validateModule(const irs::Module &module, apollo::common::DiagnosticEngine 
 
 } // namespace
 
+bool moduleNeedsChrTable(const irs::Module &module) {
+    for (const irs::Function &fn : module.functions) {
+        for (const irs::BasicBlock &block : fn.blocks) {
+            for (const irs::Instr &instr : block.body) {
+                if (instr.op == irs::Op::CallRuntime && instr.text == "str.fromByte") {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 std::string emitTbc(const irs::Module &module, apollo::common::DiagnosticEngine &diagnostics) {
     if (!validateModule(module, diagnostics)) {
         return {};
     }
 
     TbcWriter writer;
-    for (const irs::Function &fn : module.functions) {
+    const bool needsChr = moduleNeedsChrTable(module);
+    for (std::size_t fi = 0; fi < module.functions.size(); ++fi) {
+        const irs::Function &fn = module.functions[fi];
+        if (fi == 0 && needsChr && !fn.blocks.empty()) {
+            // Emit byte table before main's entry label body by injecting into a prelude label
+            // that jumps into main — keep it at the top of main's entry instead.
+            writer.label(mangleBlockLabel(fn.name, fn.blocks[0].label));
+            emitChrTableInit(writer);
+            EmitCtx ctx{fn, diagnostics, writer, std::nullopt, {}, false};
+            // Skip re-emitting the entry label; emit body + terminator, then remaining blocks.
+            ctx.stackTop.reset();
+            for (const irs::Instr &instr : fn.blocks[0].body) {
+                emitInstr(ctx, instr);
+                if (ctx.failed) {
+                    return {};
+                }
+            }
+            emitTerminator(ctx, fn.blocks[0].term);
+            if (ctx.failed) {
+                return {};
+            }
+            for (std::size_t i = 1; i < fn.blocks.size(); ++i) {
+                emitBasicBlock(ctx, fn.blocks[i], /*isEntry=*/false);
+                if (ctx.failed) {
+                    return {};
+                }
+            }
+            continue;
+        }
         if (!emitFunction(writer, fn, diagnostics)) {
             return {};
         }

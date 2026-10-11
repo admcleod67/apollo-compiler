@@ -72,6 +72,7 @@ enum class TypeKind {
     Named,
     Array,
     Record,
+    File,
 };
 
 struct TypeDenoter;

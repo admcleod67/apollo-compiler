@@ -79,6 +79,15 @@ void dumpType(std::ostream &out, const ast::TypeDenoter &type, int depth) {
         }
         return;
     }
+    if (type.kind == ast::TypeKind::File) {
+        out << "FileType\n";
+        if (type.element) {
+            indent(out, depth + 1);
+            out << "Element\n";
+            dumpType(out, *type.element, depth + 2);
+        }
+        return;
+    }
     out << "ArrayType\n";
     if (type.indexLow) {
         indent(out, depth + 1);

@@ -29,11 +29,12 @@ Architecture and development follow a methodology inspired by Ronald Mak’s
 **Milestone 5 — Code generator** is complete (`0.5.0`).
 **Milestone 6 — Standalone VM execution** is complete (`0.6.0`).
 **Milestone 7 — Pascal language completeness** is complete (`0.7.0`).
-Next: finish [Milestone 8](docs/milestones/08-pascal-runtime-library.md) (Wirth file I/O),
-then [Milestone 9 — Pick database API](docs/milestones/09-pick-database-api.md). Optional
-[Milestone 10 — dialect polish](docs/milestones/10-pascal-dialect-polish.md). Toolchain
-version is `0.7.0` (`PROJECT_VERSION`); cut git tag `v0.7.0` when ready. Multi-language
-expansion remains [deferred](docs/milestones/11-multi-language-expansion.md) as Milestone 11.
+[Milestone 8](docs/milestones/08-pascal-runtime-library.md) (runtime library, including Wirth
+file I/O) is complete. Next: [Milestone 9 — Pick database API](docs/milestones/09-pick-database-api.md).
+Optional [Milestone 10 — dialect polish](docs/milestones/10-pascal-dialect-polish.md).
+Toolchain version is `0.7.0` (`PROJECT_VERSION`); cut git tag `v0.7.0` when ready.
+Multi-language expansion remains [deferred](docs/milestones/11-multi-language-expansion.md)
+as Milestone 11.
 
 ## Supported dialect
 
@@ -46,12 +47,12 @@ and whole-array assign via `MAT_COPY`; procedures and functions (program-block o
 `if` / `while` / `repeat` / `for` / `case`; `write` / `writeln` / `read` / `readln`;
 Wirth helpers `ord` / `chr` / `succ` / `pred` / `odd` / `abs` / `sqr` / `trunc` / `round`
 and transcendentals `sqrt` / `sin` / `cos` / `arctan` / `ln` / `exp` (needs
-`gemini-module-math`);
+`gemini-module-math`); `text` / `file of T` with `assign` / `reset` / `rewrite` / `close` /
+`eof` / `eoln` (needs `gemini-module-hostfs`, and basic for text numeric `STR`);
 `{$I}` / `{$i}` file includes (path relative to the includer; nesting depth ≤ 32).
 
-**Not yet:** Wirth `file` / `text` I/O (Milestone 8 Stage 3, blocked on host FS façade);
-PickDB (Milestone 9); optional field widths / string helpers (Milestone 10). Char writes
-print as glyphs; `readln` of `real` uses float input.
+**Not yet:** PickDB (Milestone 9); optional field widths / string helpers (Milestone 10).
+Char writes print as glyphs; `readln` of `real` uses float input.
 
 **Out of scope:** units; pointers; sets; nested subprograms; enclosing-scope
 locals; `var` array parameters; `with` / `goto`; jump-table `case`; most other `{$…}`

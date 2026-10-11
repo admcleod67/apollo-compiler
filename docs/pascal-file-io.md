@@ -1,14 +1,14 @@
 # Pascal file handling
 
-Design notes for Pascal durable storage in Apollo. This is **not** a language tutorial;
-supported behaviour, once shipped, will also appear in [`pascal-dialect.md`](pascal-dialect.md).
+Design notes for Pascal durable storage in Apollo. Supported Track A behaviour is also
+summarized in [`pascal-dialect.md`](pascal-dialect.md).
 
-Delivery is split into **two tracks**. Only Track A is [Milestone 8](milestones/08-pascal-runtime-library.md)
-Stage 3.
+Delivery is split into **two tracks**. Track A is [Milestone 8](milestones/08-pascal-runtime-library.md)
+Stage 3 (**completed**).
 
 | Track | What | Owner / timing |
 |-------|------|----------------|
-| **A — Wirth files** | `text`, `file`, `file of T`, sequential I/O against Gemini’s **generic file-service** interface | [Milestone 8](milestones/08-pascal-runtime-library.md) Stage 3 (after host FS façade) |
+| **A — Wirth files** | `text`, `file of T`, sequential I/O via Gemini **hostfs** (`CALL_FUNC` ns 7) | Milestone 8 Stage 3 — **shipped** |
 | **B — Pick database API** | Explicit Pick module (e.g. `PickDB`): `PickFile`, open/read/write/select, attr helpers | [Milestone 9](milestones/09-pick-database-api.md) — **not** M8 Stage 3 |
 
 Pick MultiValue access does **not** replace Track A. Apollo implements the standard Pascal
@@ -27,45 +27,46 @@ Pick storage concepts.
 
 ### Prerequisite
 
-A host-agnostic **file-service façade** in Gemini that both the standalone runner and
-other hosts can bind (see Milestone 7 — *Why Pascal `file` I/O waits*). Apollo must not
-hard-wire POSIX paths or Pick VOC/MD paths in the front-end.
+Gemini M22 **hostfs** façade (`CALL_FUNC` namespace **7**, module `gemini-module-hostfs`) —
+met. Line buffering, `eof`, and `eoln` are implemented in Apollo.
 
-### Language surface (intent)
+### Supported surface
 
-Exact Stage 3 pinning lives in the Milestone 8 Stage notes when implementation starts.
-Intentional core:
+| Area | Stage 3 lock |
+|------|----------------|
+| Types | `text`; `file of T` where `T` is `integer` / `real` / `boolean` / `char` or a **flat record** of those. Bare `file`, array components, nested-record components, and `string` components are **diagnosed**. |
+| Path binding | Both `assign(f, path)` then `reset`/`rewrite(f)`, and `reset(f, path)` / `rewrite(f, path)` (path form implies assign). |
+| Open / close | `reset` → OpenRead; `rewrite` → OpenWrite (truncate); `close` |
+| Text transfer | `read` / `readln` / `write` / `writeln` with optional first-arg file; buffered 1-byte hostfs reads for `eof`/`eoln` |
+| Typed transfer | Whole-component `read(f, x)` / `write(f, x)` only (`readln`/`writeln` illegal on typed files) |
+| Status | `eof(f)` (text and typed); `eoln(f)` (text only) |
 
-| Area | Intent |
-|------|--------|
-| Types | `text`; `file of T` (scope of bare `file` pinned in Stage notes) |
-| Open / create | Sequential `reset` / `rewrite` (filename binding model pinned in Stage notes) |
-| Transfer | Typed / text `read` / `write` / `readln` / `writeln` as appropriate |
-| Status | `eof` / `eoln` where they apply |
-| Non-goals for Stage 3 | Turbo `BlockRead` / `BlockWrite`; random access; packing; units |
+### Binary / component layout
 
-Console `read` / `write` remain the existing builtins; file forms are additional once
-types exist.
+| Component | Encoding |
+|-----------|----------|
+| `integer`, `boolean` | 4-byte little-endian (`boolean` as `0`/`1`) |
+| `char` | 1 byte |
+| `real` | 24-byte ASCII via BASIC `STR` / `COERCE_FLT` (no VM float-bitcast); not IEEE754 binary |
+| flat `record` | Fields in declaration order, concatenated |
 
-### Runtime contract
+### Non-goals (Stage 3)
 
-- Emit binds to Gemini’s **generic file-service** interface (opcodes and/or `CALL_FUNC`
-  IDs as published), not to a Pick-specific ABI.
-- If the host does **not** provide the required file services, Apollo should **diagnose**
-  (prefer compile-time / capability check over opaque runtime failure). That is a
-  capability gate, not a separate “Pick dialect” that removes Pascal file types from the
-  language.
+- Turbo `BlockRead` / `BlockWrite`; random access; `get`/`put` as separate names
+- Pick / MultiValue API (Track B / Milestone 9)
+- Field widths (Milestone 10)
+- Compile-time diagnosis when hostfs is unbound (runtime `HOSTFS:` errors)
 
-### Examples (illustrative)
+### Runtime
 
-```pascal
-var
-  F: text;
-  Customers: file of Customer;
-begin
-  { reset / rewrite / read / write / eof / eoln — exact forms TBD in Stage 3 }
-end.
-```
+Emit binds `CALL_FUNC 7, <id>, <arity>` for hostfs. File programs need
+`gemini-vm --modules <dir>` (or `GEMINI_MODULES_PATH`) including **hostfs**; text numeric
+I/O also uses **basic** `STR`/`LEN`.
+
+### Examples
+
+See [`examples/filetext.pas`](../examples/filetext.pas) and
+[`examples/filetyped.pas`](../examples/filetyped.pas).
 
 ---
 
@@ -75,8 +76,8 @@ end.
 
 Authentic Pick / MultiValue access for applications that need files, item IDs, records,
 attributes, values, and select lists — without pretending those are stream `file of T`.
-This is the next numbered milestone after M8 Stage 3 closes (or is explicitly blocked),
-and comes **before** optional dialect polish (M10) and multi-language expansion (M11).
+This is the next numbered milestone after M8 Stage 3, and comes **before** optional dialect
+polish (M10) and multi-language expansion (M11).
 
 ### Why not emulate with `file of T`
 
@@ -122,11 +123,11 @@ exposes the file-service façade.
 
 ```text
 Apollo Pascal language
-  ├── Track A: text / file of T  →  Gemini file-service façade  →  host backend
-  └── Track B: PickDB (later)    →  Gemini DB / Pick plugin      →  VOC/MD (etc.)
+  ├── Track A: text / file of T  →  Gemini hostfs (CALL_FUNC ns 7)  →  host backend
+  └── Track B: PickDB (M9)       →  Gemini DB / Pick plugin         →  VOC/MD (etc.)
 ```
 
-- **M8 Stage 3** implements Track A only.
+- **M8 Stage 3** implements Track A only (**completed**).
 - **Milestone 9** implements Track B (PickDB).
 - “Pascal files on Pick?” remains open at the façade/capability layer, not as a
   language fork.

@@ -301,11 +301,19 @@ ast::TypeDenoter parseTypeDenoter(TokenCursor &cursor) {
     ast::TypeDenoter type;
     const Token &start = cursor.current();
 
-    if (cursor.check(TokenKind::KeywordFile)) {
-        cursor.error("file types are not supported yet");
-        type.kind = ast::TypeKind::Named;
-        type.range = start.range;
-        syncDeclaration(cursor);
+    if (cursor.match(TokenKind::KeywordFile)) {
+        type.kind = ast::TypeKind::File;
+        if (!cursor.expect(TokenKind::KeywordOf, "expected 'of' after 'file'")) {
+            type.range = start.range;
+            syncDeclaration(cursor);
+            return type;
+        }
+        type.element = std::make_unique<ast::TypeDenoter>(parseTypeDenoter(cursor));
+        if (type.element) {
+            type.range = spanRanges(start.range, type.element->range);
+        } else {
+            type.range = start.range;
+        }
         return type;
     }
 

@@ -23,6 +23,10 @@ enum class TypeTag {
     Alias,
     Array,
     Record,
+    /// Sequential text file (`text`).
+    Text,
+    /// Typed component file (`file of T`); `element` holds T.
+    File,
     Error,
 };
 
@@ -39,7 +43,7 @@ struct Type {
     TypeTag tag{TypeTag::Error};
     std::string name;
     std::shared_ptr<Type> canonical; // Alias → underlying
-    std::shared_ptr<Type> element;   // Array element
+    std::shared_ptr<Type> element;   // Array element or File component
     /// Const index bounds for Array (Pascal `[lo..hi]`), evaluated by semantic analyse,
     /// which is the only producer of Array types — so `hasBounds` is never a guess.
     std::int64_t indexLow{0};
@@ -52,6 +56,8 @@ struct Type {
 [[nodiscard]] TypePtr makeAlias(std::string name, TypePtr underlying);
 [[nodiscard]] TypePtr makeArray(TypePtr element, std::int64_t indexLow, std::int64_t indexHigh);
 [[nodiscard]] TypePtr makeRecord(std::vector<RecordField> fields);
+[[nodiscard]] TypePtr makeFile(TypePtr element);
+[[nodiscard]] TypePtr makeText();
 [[nodiscard]] TypePtr makeError();
 
 /// Peel Alias layers; returns Error if type is null.

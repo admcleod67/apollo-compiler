@@ -23,6 +23,9 @@ TypePtr makePredefined(TypeTag tag) {
     case TypeTag::String:
         type->name = "string";
         break;
+    case TypeTag::Text:
+        type->name = "text";
+        break;
     default:
         type->tag = TypeTag::Error;
         type->name = "<error>";
@@ -54,6 +57,17 @@ TypePtr makeRecord(std::vector<RecordField> fields) {
     type->tag = TypeTag::Record;
     type->fields = std::move(fields);
     return type;
+}
+
+TypePtr makeFile(TypePtr element) {
+    auto type = std::make_shared<Type>();
+    type->tag = TypeTag::File;
+    type->element = std::move(element);
+    return type;
+}
+
+TypePtr makeText() {
+    return makePredefined(TypeTag::Text);
 }
 
 TypePtr makeError() {

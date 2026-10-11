@@ -77,6 +77,10 @@ bool isAssignable(const TypePtr &dest, const TypePtr &src) {
     if (!d || !s) {
         return true;
     }
+    if (d->tag == TypeTag::Text || d->tag == TypeTag::File || s->tag == TypeTag::Text ||
+        s->tag == TypeTag::File) {
+        return false;
+    }
     if (d->tag == TypeTag::Array && s->tag == TypeTag::Array) {
         return isAssignable(d->element, s->element);
     }
@@ -279,6 +283,52 @@ TypePtr resolveDenoterImpl(SymbolTable &table, ast::TypeDenoter &denoter,
         return makeArray(resolveDenoter(table, *denoter.element, diagnostics), *low, *high);
     }
 
+    if (denoter.kind == ast::TypeKind::File) {
+        if (!denoter.element) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error, denoter.range.begin,
+                               "'file' requires 'of' and a component type");
+            return makeError();
+        }
+        TypePtr element = resolveDenoter(table, *denoter.element, diagnostics);
+        const TypeTag et = canonicalTag(element);
+        if (et == TypeTag::Error) {
+            return makeError();
+        }
+        if (et == TypeTag::Array || et == TypeTag::Text || et == TypeTag::File ||
+            et == TypeTag::String) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               denoter.element->range.begin,
+                               "unsupported file component type");
+            return makeError();
+        }
+        if (et == TypeTag::Record) {
+            TypePtr peeled = element;
+            while (peeled && peeled->tag == TypeTag::Alias) {
+                peeled = peeled->canonical;
+            }
+            if (peeled) {
+                for (const RecordField &field : peeled->fields) {
+                    const TypeTag ft = canonicalTag(field.type);
+                    if (ft != TypeTag::Integer && ft != TypeTag::Real && ft != TypeTag::Boolean &&
+                        ft != TypeTag::Char) {
+                        diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           denoter.element->range.begin,
+                                           "file of record fields must be integer, real, "
+                                           "boolean, or char");
+                        return makeError();
+                    }
+                }
+            }
+        } else if (et != TypeTag::Integer && et != TypeTag::Real && et != TypeTag::Boolean &&
+                   et != TypeTag::Char) {
+            diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               denoter.element->range.begin,
+                               "unsupported file component type");
+            return makeError();
+        }
+        return makeFile(std::move(element));
+    }
+
     if (denoter.name.empty()) {
         return makeError();
     }
@@ -464,6 +514,20 @@ void checkUserCallArgs(AnalyseCtx &ctx, const Symbol &callee,
     }
 }
 
+bool isFileType(const TypePtr &type) {
+    const TypeTag tag = canonicalTag(type);
+    return tag == TypeTag::Text || tag == TypeTag::File;
+}
+
+bool isFileVarExpr(AnalyseCtx &ctx, const ast::Expr *expr) {
+    if (!expr || expr->kind != ast::ExprKind::Identifier) {
+        return false;
+    }
+    const Symbol *sym = ctx.table.lookup(expr->text);
+    return sym && (sym->kind == SymbolKind::Var || sym->kind == SymbolKind::Param) &&
+           isFileType(expr->type);
+}
+
 void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
                              std::vector<std::unique_ptr<ast::Expr>> &args,
                              apollo::common::SourceLocation location) {
@@ -471,8 +535,43 @@ void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
     const bool isWrite = name == "write" || name == "writeln";
     const bool isRead = name == "read" || name == "readln";
 
+    std::size_t start = 0;
+    TypePtr fileType;
+    if (!args.empty() && args[0] && isFileVarExpr(ctx, args[0].get())) {
+        fileType = args[0]->type;
+        start = 1;
+    }
+
     if (isWrite) {
-        for (auto &arg : args) {
+        if (fileType && canonicalTag(fileType) == TypeTag::File) {
+            // Typed file: write(f) or write(f, component).
+            if (args.size() == start) {
+                return;
+            }
+            if (args.size() != start + 1 || !args[start]) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'" + callee.name +
+                                           "' on a typed file takes one component argument");
+                return;
+            }
+            TypePtr peeled = fileType;
+            while (peeled && peeled->tag == TypeTag::Alias) {
+                peeled = peeled->canonical;
+            }
+            if (peeled && peeled->element &&
+                !isAssignable(peeled->element, args[start]->type)) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                       args[start]->range.begin,
+                                       "incompatible component type for typed file write");
+            }
+            if (name == "writeln") {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'writeln' is not valid for typed files; use 'write'");
+            }
+            return;
+        }
+        for (std::size_t i = start; i < args.size(); ++i) {
+            auto &arg = args[i];
             if (!arg) {
                 continue;
             }
@@ -489,12 +588,25 @@ void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
     }
 
     if (isRead) {
-        if (args.empty()) {
+        if (args.size() <= start) {
             ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
-                                   "'" + callee.name + "' requires at least one argument");
+                                   "'" + callee.name + "' requires at least one variable");
             return;
         }
-        for (auto &arg : args) {
+        if (fileType && canonicalTag(fileType) == TypeTag::File) {
+            if (args.size() != start + 1 || !args[start]) {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'" + callee.name +
+                                           "' on a typed file takes one component variable");
+                return;
+            }
+            if (name == "readln") {
+                ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                       "'readln' is not valid for typed files; use 'read'");
+            }
+        }
+        for (std::size_t i = start; i < args.size(); ++i) {
+            auto &arg = args[i];
             if (!arg) {
                 continue;
             }
@@ -515,6 +627,29 @@ void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
             if (isError(arg->type)) {
                 continue;
             }
+            if (fileType && canonicalTag(fileType) == TypeTag::File) {
+                TypePtr peeled = fileType;
+                while (peeled && peeled->tag == TypeTag::Alias) {
+                    peeled = peeled->canonical;
+                }
+                if (peeled && peeled->element && !isAssignable(arg->type, peeled->element) &&
+                    !isAssignable(peeled->element, arg->type)) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           arg->range.begin,
+                                           "incompatible component type for typed file read");
+                }
+                continue;
+            }
+            if (fileType && canonicalTag(fileType) == TypeTag::Text) {
+                const TypeTag at = canonicalTag(arg->type);
+                if (!isReadable(at) && at != TypeTag::String) {
+                    ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                           arg->range.begin,
+                                           "argument type not readable for text '" + callee.name +
+                                               "'");
+                }
+                continue;
+            }
             if (!isReadable(canonicalTag(arg->type))) {
                 ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
                                        arg->range.begin,
@@ -524,8 +659,84 @@ void checkConsoleBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
     }
 }
 
+bool isFileIoBuiltinName(std::string_view name) {
+    return name == "assign" || name == "reset" || name == "rewrite" || name == "close" ||
+           name == "eof" || name == "eoln";
+}
+
 bool isConsoleBuiltinName(std::string_view name) {
     return name == "write" || name == "writeln" || name == "read" || name == "readln";
+}
+
+void checkFileIoBuiltinCall(AnalyseCtx &ctx, const Symbol &callee,
+                            std::vector<std::unique_ptr<ast::Expr>> &args,
+                            apollo::common::SourceLocation location, bool asExpression) {
+    const std::string name = foldAsciiLower(callee.name);
+    if (name == "eof" || name == "eoln") {
+        if (!asExpression) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'" + callee.name + "' cannot be used as a statement");
+            return;
+        }
+        if (args.size() != 1 || !args[0] || !isFileVarExpr(ctx, args[0].get())) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'" + callee.name + "' requires a file variable");
+            return;
+        }
+        if (name == "eoln" && canonicalTag(args[0]->type) != TypeTag::Text) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                                   args[0]->range.begin, "'eoln' requires a text file");
+        }
+        return;
+    }
+    if (asExpression) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "'" + callee.name + "' cannot be used as a value");
+        return;
+    }
+    if (name == "assign") {
+        if (args.size() != 2 || !args[0] || !args[1]) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'assign' requires a file variable and a path string");
+            return;
+        }
+        if (!isFileVarExpr(ctx, args[0].get())) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, args[0]->range.begin,
+                                   "'assign' first argument must be a file variable");
+        }
+        if (canonicalTag(args[1]->type) != TypeTag::String &&
+            canonicalTag(args[1]->type) != TypeTag::Char) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, args[1]->range.begin,
+                                   "'assign' path must be a string");
+        }
+        return;
+    }
+    if (name == "close") {
+        if (args.size() != 1 || !args[0] || !isFileVarExpr(ctx, args[0].get())) {
+            ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                                   "'close' requires a file variable");
+        }
+        return;
+    }
+    // reset / rewrite
+    if (args.empty() || !args[0] || !isFileVarExpr(ctx, args[0].get())) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "'" + callee.name + "' requires a file variable");
+        return;
+    }
+    if (args.size() == 1) {
+        return;
+    }
+    if (args.size() != 2 || !args[1]) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, location,
+                               "'" + callee.name + "' takes a file and optional path string");
+        return;
+    }
+    if (canonicalTag(args[1]->type) != TypeTag::String &&
+        canonicalTag(args[1]->type) != TypeTag::Char) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error, args[1]->range.begin,
+                               "'" + callee.name + "' path must be a string");
+    }
 }
 
 bool isStdFuncBuiltinName(std::string_view name) {
@@ -723,6 +934,13 @@ TypePtr checkCall(AnalyseCtx &ctx, std::string_view name,
                                        "'" + std::string(name) + "' cannot be used as a value");
             }
             checkConsoleBuiltinCall(ctx, *found, args, location);
+            return makeError();
+        }
+        if (isFileIoBuiltinName(folded)) {
+            checkFileIoBuiltinCall(ctx, *found, args, location, asExpression);
+            if (folded == "eof" || folded == "eoln") {
+                return makePredefined(TypeTag::Boolean);
+            }
             return makeError();
         }
         if (isStdFuncBuiltinName(folded)) {
@@ -1447,7 +1665,7 @@ void seedPredefinedTypes(SymbolTable &table, apollo::common::SourceLocation loca
     static constexpr Seed kTypes[] = {
         {"integer", TypeTag::Integer}, {"real", TypeTag::Real},
         {"boolean", TypeTag::Boolean}, {"char", TypeTag::Char},
-        {"string", TypeTag::String},
+        {"string", TypeTag::String},   {"text", TypeTag::Text},
     };
     for (const Seed &seed : kTypes) {
         (void)table.declare(SymbolKind::Type, seed.name, location, makePredefined(seed.tag));
@@ -1470,9 +1688,10 @@ SymbolTable analyse(ast::Program &program,
     seedBooleanConsts(table, program.range.begin);
 
     static constexpr const char *kBuiltins[] = {
-        "write", "writeln", "read", "readln", "ord",  "chr",    "succ",   "pred",
-        "odd",   "abs",     "sqr",  "trunc",  "round", "sqrt",  "sin",    "cos",
-        "arctan", "ln",     "exp"};
+        "write",  "writeln", "read",   "readln", "assign", "reset",  "rewrite", "close",
+        "eof",    "eoln",    "ord",    "chr",    "succ",   "pred",   "odd",     "abs",
+        "sqr",    "trunc",   "round",  "sqrt",   "sin",    "cos",    "arctan",  "ln",
+        "exp"};
     for (const char *builtin : kBuiltins) {
         (void)table.declare(SymbolKind::Builtin, builtin, program.range.begin, makeError());
     }

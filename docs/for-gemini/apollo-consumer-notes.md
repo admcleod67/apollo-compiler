@@ -45,8 +45,8 @@ documented on the Gemini side.
 - Softening or redefining `DIM_ARRAY` / `MAT_COPY` / `MAT_INIT` (requires new opcode or ABI
   version if BASIC invariants must hold).
 - Pascal field widths / TP-style real formatting → language module or later binding.
-- Host filesystem façade / Pascal Wirth `file` / `text` I/O (Milestone 8 Stage 3;
-  [`pascal-file-io.md`](../pascal-file-io.md) Track A). PickDB / MultiValue API is
+- ~~Host filesystem façade / Pascal Wirth `file` / `text` I/O~~ — **Consumed** (Gemini M22
+  hostfs ns 7; Apollo M8 Stage 3). PickDB / MultiValue API is
   [Milestone 9](../milestones/09-pick-database-api.md). Field widths / string polish:
   optional [Milestone 10](../milestones/10-pascal-dialect-polish.md).
 
@@ -216,24 +216,25 @@ module formatting (still open).
 
 **Typical pattern today (Apollo)**
 
-- No Pascal file I/O in the supported dialect; waiting on a **host-agnostic file-service
-  façade** before Milestone 8 Stage 3 (Wirth Track A). Pick database access is
-  [Milestone 9](../milestones/09-pick-database-api.md) (`PickDB`), not a substitute for
-  Pascal files — see [`pascal-file-io.md`](../pascal-file-io.md).
+- **Gemini M22 hostfs** (`CALL_FUNC` ns **7**) + **Apollo M8 Stage 3** shipped: `text` /
+  `file of T` emit `CALL_FUNC 7,…`; line/`eof`/`eoln` stay in Apollo. Load
+  `gemini-module-hostfs` (text numeric formatting also uses BASIC `STR`/`LEN`). Pick
+  database access remains [Milestone 9](../milestones/09-pick-database-api.md) (`PickDB`)
+  — see [`pascal-file-io.md`](../pascal-file-io.md).
 
-**Possible direction**
+**Possible direction (follow-ons)**
 
-- Shared **file-service façade** for Wirth sequential I/O (paths, open/read/write or
-  get/put, errors); diagnose when unbound.
-- Separate **DB / Pick plugin** services for MultiValue APIs (BASIC today; Pascal
-  `PickDB` later). Whether Pick hosts also bind the Wirth façade remains open.
+- Optional Pick-host adapter over the same façade; compile-time/capability diagnose when
+  unbound.
+- IEEE754 binary `real` components if/when a float-bitcast or `CHR`-style helper lands.
+- Separate **DB / Pick plugin** services for MultiValue APIs (Milestone 9).
 
 **Benefit**
 
-- Unblocks `file of T` / `text` without coupling the dialect to Pick records; keeps
-  authentic Pick access explicit.
+- Wirth `file of T` / `text` without coupling the dialect to Pick records; keeps authentic
+  Pick access explicit.
 
-**Priority:** *capability* (large cross-cutting host + VM effort; not near-term).
+**Priority:** *capability* delivered for Apollo Stage 3; Pick adapter / bitcast polish open.
 
 ---
 
@@ -292,3 +293,4 @@ No Apollo release should **require** the changes listed in this document.
 | 2026-09 | Apollo M8 Stage 1b **consumed** Gemini shared math (`CALL_FUNC` ns `6`; six Wirth funcs; `tan` unbound). |
 | 2026-10 | File I/O design: Wirth Track A (M8 Stage 3) vs later PickDB Track B; façade capability left open for Pick hosts ([`pascal-file-io.md`](../pascal-file-io.md)). |
 | 2026-10 | Roadmap: M9 PickDB, optional M10 dialect polish (field widths / strings), multi-language → M11. |
+| 2026-10 | Apollo M8 Stage 3 **consumed** Gemini M22 hostfs (`CALL_FUNC` ns `7`); `text` / `file of T` shipped. |

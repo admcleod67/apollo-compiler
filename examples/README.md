@@ -22,12 +22,21 @@ Sample Pascal programs for Apollo. Each file is self-contained and should pass
 | [`include_main.pas`](include_main.pas) | `{$I}` include (`include_helper.inc`) | `included` |
 | [`stdfuncs.pas`](stdfuncs.pas) | `ord`/`chr`/`succ`/`pred`/`odd`/`abs`/`sqr`/`trunc`/`round` | `65 A`, then ordinal/arithmetic demos |
 | [`stdmath.pas`](stdmath.pas) | `sqrt`/`sin`/`cos`/`arctan`/`ln`/`exp` (needs `gemini-module-math`) | `3`, `0`, `1`, `0`, `0`, `1`, `2` |
+| [`filetext.pas`](filetext.pas) | `text`, `assign`/`rewrite`/`reset`/`writeln`/`readln`/`eof` (needs hostfs + basic) | `hello`, `world` |
+| [`filetyped.pas`](filetyped.pas) | `file of integer`, `file of` flat record (needs hostfs) | `10`, `20`, `30`, then `3`…`6` |
 
 ## Compile and run
 
 ```bash
 apolloc --check examples/primes.pas
 apolloc --emit examples/primes.pas | gemini-vm /dev/stdin
+```
+
+File I/O examples need language modules (hostfs; basic for text numeric formatting):
+
+```bash
+apolloc --tbc examples/filetext.pas > /tmp/filetext.tbc
+gemini-vm --modules "$GEMINI_MODULES_PATH" /tmp/filetext.tbc
 ```
 
 Interactive example (`readsum.pas`): type two integers at the prompts, then read the sum.

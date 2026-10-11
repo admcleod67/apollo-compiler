@@ -252,6 +252,8 @@ set(APOLLO_EXAMPLE_PROGRAMS
     include_main
     stdfuncs
     stdmath
+    filetext
+    filetyped
 )
 foreach(name IN LISTS APOLLO_EXAMPLE_PROGRAMS)
     add_test(

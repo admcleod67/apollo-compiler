@@ -684,5 +684,53 @@ int main() {
         }
     }
 
+    // Milestone 8 Stage 3 — file types and builtins.
+    {
+        ScanAnalyse ok("fileok.pas",
+                       "program P;\n"
+                       "var\n"
+                       "  t: text;\n"
+                       "  f: file of integer;\n"
+                       "  s: string;\n"
+                       "begin\n"
+                       "  assign(t, 'a.txt');\n"
+                       "  rewrite(t);\n"
+                       "  writeln(t, 'hi');\n"
+                       "  close(t);\n"
+                       "  reset(t, 'a.txt');\n"
+                       "  readln(t, s);\n"
+                       "  if eof(t) then writeln(s);\n"
+                       "  if eoln(t) then writeln(s);\n"
+                       "  close(t);\n"
+                       "  rewrite(f, 'b.bin');\n"
+                       "  write(f, 1);\n"
+                       "  close(f);\n"
+                       "end.\n");
+        if (ok.diagnostics.errorCount() != 0) {
+            return fail("text and file of integer should analyse cleanly");
+        }
+    }
+    {
+        ScanAnalyse bare("barefile.pas", "program P; var f: file; begin end.");
+        if (bare.diagnostics.errorCount() == 0) {
+            return fail("bare file should diagnose");
+        }
+    }
+    {
+        ScanAnalyse eolnTyped("eolntyped.pas",
+                              "program P; var f: file of integer; b: boolean;\n"
+                              "begin b := eoln(f); end.");
+        if (eolnTyped.diagnostics.errorCount() == 0) {
+            return fail("eoln on typed file should diagnose");
+        }
+    }
+    {
+        ScanAnalyse badComp("filearr.pas",
+                            "program P; var f: file of array[1..3] of integer; begin end.");
+        if (badComp.diagnostics.errorCount() == 0) {
+            return fail("file of array should diagnose");
+        }
+    }
+
     return 0;
 }

@@ -85,6 +85,8 @@ irs::IrType toIrType(const TypePtr &type) {
     case TypeTag::Array:
         return irs::IrType::ArrayRef;
     case TypeTag::Record:
+    case TypeTag::Text:
+    case TypeTag::File:
         return irs::IrType::Error;
     case TypeTag::Alias: // canonicalTag() already peels aliases
     case TypeTag::Error:
@@ -135,6 +137,8 @@ struct LowerCtx {
     std::unordered_map<std::string, std::uint32_t> fieldSlots;
     /// Whole record variables (no aggregate slot): folded name -> record type.
     std::unordered_map<std::string, TypePtr> recordVars;
+    /// File / text variables: folded name -> Text or File type (slots are mangled locals).
+    std::unordered_map<std::string, TypePtr> fileVars;
     /// Monotonic counter for unique block labels within this function.
     std::uint32_t blockCounter{0};
     /// Folded name of the enclosing function, set only while lowering a function body.
@@ -227,6 +231,61 @@ void declareRecordFields(LowerCtx &ctx, std::string_view baseName, const TypePtr
         ctx.function.locals.push_back(std::move(local));
         ctx.fieldSlots.emplace(fieldSlotKey(baseName, field.name), slot);
     }
+}
+
+void declareLocalNamed(LowerCtx &ctx, const std::string &name, irs::IrType type) {
+    const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
+    ctx.function.locals.push_back(irs::Local{name, type});
+    ctx.localSlots.emplace(foldAsciiLower(name), slot);
+}
+
+void declareFileSlots(LowerCtx &ctx, std::string_view baseName, const TypePtr &fileType) {
+    const TypePtr peeled = peelTypeAliases(fileType);
+    if (!peeled || (peeled->tag != TypeTag::Text && peeled->tag != TypeTag::File)) {
+        return;
+    }
+    const std::string base(baseName);
+    declareLocalNamed(ctx, base + "$path", irs::IrType::StringRef);
+    declareLocalNamed(ctx, base + "$h", irs::IrType::I32);
+    declareLocalNamed(ctx, base + "$rd", irs::IrType::I32);
+    declareLocalNamed(ctx, base + "$eof", irs::IrType::I32);
+    if (peeled->tag == TypeTag::Text) {
+        declareLocalNamed(ctx, base + "$peek", irs::IrType::StringRef);
+        declareLocalNamed(ctx, base + "$eoln", irs::IrType::I32);
+    }
+    ctx.fileVars.emplace(foldAsciiLower(baseName), fileType);
+}
+
+std::optional<ResolvedSlot> resolveFileSlot(const LowerCtx &ctx, std::string_view baseName,
+                                            std::string_view suffix) {
+    return resolveSlot(ctx, foldAsciiLower(baseName) + "$" + foldAsciiLower(suffix));
+}
+
+bool isFileVarName(const LowerCtx &ctx, std::string_view folded) {
+    return ctx.fileVars.find(std::string(folded)) != ctx.fileVars.end();
+}
+
+TypePtr fileVarType(const LowerCtx &ctx, std::string_view folded) {
+    const auto it = ctx.fileVars.find(std::string(folded));
+    if (it == ctx.fileVars.end()) {
+        return nullptr;
+    }
+    return peelTypeAliases(it->second);
+}
+
+irs::ValueId emitRuntimeCall(LowerCtx &ctx, std::string name, irs::IrType resultType,
+                             std::vector<irs::ValueId> args) {
+    irs::Instr call;
+    call.op = irs::Op::CallRuntime;
+    call.type = resultType;
+    call.text = std::move(name);
+    call.args = std::move(args);
+    if (resultType != irs::IrType::Void) {
+        call.result = ctx.function.newTemp();
+    }
+    const irs::ValueId result = call.result;
+    ctx.block.body.push_back(std::move(call));
+    return result;
 }
 
 std::optional<ResolvedSlot> resolveFieldSlot(const LowerCtx &ctx, std::string_view baseName,
@@ -868,10 +927,19 @@ bool isStdFuncName(std::string_view folded) {
            folded == "arctan" || folded == "ln" || folded == "exp";
 }
 
+irs::ValueId lowerEofExpr(LowerCtx &ctx, const ast::Expr &expr);
+irs::ValueId lowerEolnExpr(LowerCtx &ctx, const ast::Expr &expr);
+
 irs::ValueId lowerCallExpr(LowerCtx &ctx, const ast::Expr &expr) {
     const std::string folded = foldAsciiLower(expr.text);
     if (isStdFuncName(folded)) {
         return lowerStdFuncCall(ctx, expr);
+    }
+    if (folded == "eof") {
+        return lowerEofExpr(ctx, expr);
+    }
+    if (folded == "eoln") {
+        return lowerEolnExpr(ctx, expr);
     }
     // User function call (console builtins are statement-only).
     std::vector<irs::ArrayCopySetup> matCopies;
@@ -954,6 +1022,727 @@ irs::ValueId lowerExpr(LowerCtx &ctx, const ast::Expr &expr) {
     return result;
 }
 
+irs::ValueId loadFileSlot(LowerCtx &ctx, std::string_view fileName, std::string_view suffix,
+                          irs::IrType type) {
+    const auto slot = resolveFileSlot(ctx, fileName, suffix);
+    if (!slot) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               apollo::common::SourceLocation{},
+                               "IR lowering: missing file slot '" + std::string(fileName) + "$" +
+                                   std::string(suffix) + "'");
+        return emitZeroValue(ctx, type);
+    }
+    return emitLoad(ctx, slot->operand, type);
+}
+
+void storeFileSlot(LowerCtx &ctx, std::string_view fileName, std::string_view suffix,
+                   irs::ValueId value) {
+    const auto slot = resolveFileSlot(ctx, fileName, suffix);
+    if (!slot) {
+        ctx.diagnostics.report(apollo::common::DiagnosticSeverity::Error,
+                               apollo::common::SourceLocation{},
+                               "IR lowering: missing file slot '" + std::string(fileName) + "$" +
+                                   std::string(suffix) + "'");
+        return;
+    }
+    emitStore(ctx, slot->operand, value);
+}
+
+irs::ValueId lowerToString(LowerCtx &ctx, const ast::Expr &expr) {
+    const TypeTag tag = canonicalTag(expr.type);
+    if (tag == TypeTag::String) {
+        return lowerExpr(ctx, expr);
+    }
+    if (tag == TypeTag::Char) {
+        const irs::ValueId code = lowerExpr(ctx, expr);
+        return emitRuntimeCall(ctx, "str.fromByte", irs::IrType::StringRef, {code});
+    }
+    if (tag == TypeTag::Boolean) {
+        const irs::ValueId v = lowerExpr(ctx, expr);
+        const irs::Operand dest = declareTempLocal(ctx, "$bstr.", irs::IrType::StringRef);
+        const std::string tLabel = newLabel(ctx, "bstr.t.");
+        const std::string fLabel = newLabel(ctx, "bstr.f.");
+        const std::string mLabel = newLabel(ctx, "bstr.m.");
+        sealBlock(ctx, branchIfTo(v, tLabel, fLabel));
+        beginBlock(ctx, tLabel);
+        emitStore(ctx, dest, emitConstString(ctx, "TRUE"));
+        sealBlock(ctx, branchTo(mLabel));
+        beginBlock(ctx, fLabel);
+        emitStore(ctx, dest, emitConstString(ctx, "FALSE"));
+        sealBlock(ctx, branchTo(mLabel));
+        beginBlock(ctx, mLabel);
+        return emitLoad(ctx, dest, irs::IrType::StringRef);
+    }
+    // integer / real → BASIC STR
+    const irs::ValueId v = lowerExpr(ctx, expr);
+    return emitRuntimeCall(ctx, "basic.str", irs::IrType::StringRef, {v});
+}
+
+void lowerCloseFile(LowerCtx &ctx, std::string_view fileName) {
+    const irs::ValueId handle = loadFileSlot(ctx, fileName, "h", irs::IrType::I32);
+    const irs::ValueId zero = emitConstI32(ctx, 0);
+    const irs::ValueId open =
+        emitBinaryOp(ctx, irs::Op::CmpNe, handle, zero, irs::IrType::Bool);
+    const std::string doClose = newLabel(ctx, "fclose.");
+    const std::string done = newLabel(ctx, "fclose.done.");
+    sealBlock(ctx, branchIfTo(open, doClose, done));
+    beginBlock(ctx, doClose);
+    (void)emitRuntimeCall(ctx, "hostfs.close", irs::IrType::I32, {handle});
+    storeFileSlot(ctx, fileName, "h", emitConstI32(ctx, 0));
+    storeFileSlot(ctx, fileName, "rd", emitConstI32(ctx, 0));
+    sealBlock(ctx, branchTo(done));
+    beginBlock(ctx, done);
+}
+
+void lowerAssignFile(LowerCtx &ctx, const ast::Stmt &stmt) {
+    if (stmt.args.size() < 2 || !stmt.args[0] || !stmt.args[1]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    const irs::ValueId path = lowerToString(ctx, *stmt.args[1]);
+    storeFileSlot(ctx, fileName, "path", path);
+}
+
+void lowerResetRewrite(LowerCtx &ctx, const ast::Stmt &stmt, bool forRead) {
+    if (stmt.args.empty() || !stmt.args[0]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    if (stmt.args.size() >= 2 && stmt.args[1]) {
+        storeFileSlot(ctx, fileName, "path", lowerToString(ctx, *stmt.args[1]));
+    }
+    lowerCloseFile(ctx, fileName);
+    const irs::ValueId path = loadFileSlot(ctx, fileName, "path", irs::IrType::StringRef);
+    const irs::ValueId handle =
+        emitRuntimeCall(ctx, forRead ? "hostfs.openRead" : "hostfs.openWrite", irs::IrType::I32,
+                        {path});
+    storeFileSlot(ctx, fileName, "h", handle);
+    storeFileSlot(ctx, fileName, "rd", emitConstI32(ctx, forRead ? 1 : 0));
+    storeFileSlot(ctx, fileName, "eof", emitConstI32(ctx, 0));
+    if (fileVarType(ctx, foldAsciiLower(fileName)) &&
+        canonicalTag(fileVarType(ctx, foldAsciiLower(fileName))) == TypeTag::Text) {
+        storeFileSlot(ctx, fileName, "peek", emitConstString(ctx, ""));
+        storeFileSlot(ctx, fileName, "eoln", emitConstI32(ctx, 0));
+    }
+}
+
+/// Ensure text file has a 1-byte peek (or eof).
+void lowerTextFillPeek(LowerCtx &ctx, std::string_view fileName) {
+    const irs::ValueId peek = loadFileSlot(ctx, fileName, "peek", irs::IrType::StringRef);
+    const irs::ValueId empty = emitConstString(ctx, "");
+    const irs::ValueId isEmpty =
+        emitBinaryOp(ctx, irs::Op::CmpEq, peek, empty, irs::IrType::Bool);
+    const std::string need = newLabel(ctx, "tpeek.");
+    const std::string done = newLabel(ctx, "tpeek.done.");
+    sealBlock(ctx, branchIfTo(isEmpty, need, done));
+    beginBlock(ctx, need);
+    {
+        const irs::ValueId eofFlag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+        const irs::ValueId alreadyEof =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eofFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string readLab = newLabel(ctx, "tpeek.read.");
+        const std::string skipLab = newLabel(ctx, "tpeek.skip.");
+        sealBlock(ctx, branchIfTo(alreadyEof, skipLab, readLab));
+        beginBlock(ctx, readLab);
+        {
+            const irs::ValueId handle = loadFileSlot(ctx, fileName, "h", irs::IrType::I32);
+            const irs::ValueId one = emitConstI32(ctx, 1);
+            const irs::ValueId chunk =
+                emitRuntimeCall(ctx, "hostfs.read", irs::IrType::StringRef, {handle, one});
+            const irs::ValueId gotEmpty =
+                emitBinaryOp(ctx, irs::Op::CmpEq, chunk, empty, irs::IrType::Bool);
+            const std::string atEof = newLabel(ctx, "tpeek.eof.");
+            const std::string have = newLabel(ctx, "tpeek.have.");
+            sealBlock(ctx, branchIfTo(gotEmpty, atEof, have));
+            beginBlock(ctx, atEof);
+            storeFileSlot(ctx, fileName, "eof", emitConstI32(ctx, 1));
+            storeFileSlot(ctx, fileName, "eoln", emitConstI32(ctx, 1));
+            sealBlock(ctx, branchTo(skipLab));
+            beginBlock(ctx, have);
+            storeFileSlot(ctx, fileName, "peek", chunk);
+            const irs::ValueId code =
+                emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {chunk});
+            const irs::ValueId nl = emitConstI32(ctx, static_cast<unsigned char>('\n'));
+            const irs::ValueId isNl =
+                emitBinaryOp(ctx, irs::Op::CmpEq, code, nl, irs::IrType::Bool);
+            // Store eoln as 0/1 int from bool.
+            storeFileSlot(ctx, fileName, "eoln",
+                          emitUnaryOp(ctx, irs::Op::Copy, isNl, irs::IrType::I32));
+            sealBlock(ctx, branchTo(skipLab));
+        }
+        beginBlock(ctx, skipLab);
+        sealBlock(ctx, branchTo(done));
+    }
+    beginBlock(ctx, done);
+}
+
+irs::ValueId lowerEofExpr(LowerCtx &ctx, const ast::Expr &expr) {
+    if (expr.args.empty() || !expr.args[0]) {
+        return emitConstBool(ctx, true);
+    }
+    const std::string fileName = expr.args[0]->text;
+    if (canonicalTag(expr.args[0]->type) == TypeTag::Text) {
+        lowerTextFillPeek(ctx, fileName);
+    }
+    const irs::ValueId flag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+    return emitBinaryOp(ctx, irs::Op::CmpNe, flag, emitConstI32(ctx, 0), irs::IrType::Bool);
+}
+
+irs::ValueId lowerEolnExpr(LowerCtx &ctx, const ast::Expr &expr) {
+    if (expr.args.empty() || !expr.args[0]) {
+        return emitConstBool(ctx, true);
+    }
+    const std::string fileName = expr.args[0]->text;
+    lowerTextFillPeek(ctx, fileName);
+    const irs::ValueId flag = loadFileSlot(ctx, fileName, "eoln", irs::IrType::I32);
+    return emitBinaryOp(ctx, irs::Op::CmpNe, flag, emitConstI32(ctx, 0), irs::IrType::Bool);
+}
+
+irs::ValueId lowerByteMod256(LowerCtx &ctx, irs::ValueId n) {
+    const irs::ValueId m = emitConstI32(ctx, 256);
+    const irs::ValueId rem = emitBinaryOp(ctx, irs::Op::Mod, n, m, irs::IrType::I32);
+    const irs::ValueId zero = emitConstI32(ctx, 0);
+    const irs::ValueId neg =
+        emitBinaryOp(ctx, irs::Op::CmpLt, rem, zero, irs::IrType::Bool);
+    const irs::Operand dest = declareTempLocal(ctx, "$b256.", irs::IrType::I32);
+    const std::string adj = newLabel(ctx, "b256.adj.");
+    const std::string ok = newLabel(ctx, "b256.ok.");
+    const std::string merge = newLabel(ctx, "b256.m.");
+    sealBlock(ctx, branchIfTo(neg, adj, ok));
+    beginBlock(ctx, adj);
+    emitStore(ctx, dest, emitBinaryOp(ctx, irs::Op::Add, rem, m, irs::IrType::I32));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, ok);
+    emitStore(ctx, dest, rem);
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, merge);
+    return emitLoad(ctx, dest, irs::IrType::I32);
+}
+
+irs::ValueId lowerFloorDiv256(LowerCtx &ctx, irs::ValueId n) {
+    const irs::ValueId m = emitConstI32(ctx, 256);
+    const irs::ValueId q = emitBinaryOp(ctx, irs::Op::Div, n, m, irs::IrType::I32);
+    const irs::ValueId r = emitBinaryOp(ctx, irs::Op::Mod, n, m, irs::IrType::I32);
+    const irs::ValueId zero = emitConstI32(ctx, 0);
+    const irs::ValueId nNeg =
+        emitBinaryOp(ctx, irs::Op::CmpLt, n, zero, irs::IrType::Bool);
+    const irs::ValueId rNonZero =
+        emitBinaryOp(ctx, irs::Op::CmpNe, r, zero, irs::IrType::Bool);
+    const irs::ValueId needAdj =
+        emitBinaryOp(ctx, irs::Op::And, nNeg, rNonZero, irs::IrType::Bool);
+    const irs::Operand dest = declareTempLocal(ctx, "$fd256.", irs::IrType::I32);
+    const std::string adj = newLabel(ctx, "fd256.adj.");
+    const std::string ok = newLabel(ctx, "fd256.ok.");
+    const std::string merge = newLabel(ctx, "fd256.m.");
+    sealBlock(ctx, branchIfTo(needAdj, adj, ok));
+    beginBlock(ctx, adj);
+    emitStore(ctx, dest,
+              emitBinaryOp(ctx, irs::Op::Sub, q, emitConstI32(ctx, 1), irs::IrType::I32));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, ok);
+    emitStore(ctx, dest, q);
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, merge);
+    return emitLoad(ctx, dest, irs::IrType::I32);
+}
+
+void lowerHostfsWriteByte(LowerCtx &ctx, irs::ValueId handle, irs::ValueId byteVal) {
+    const irs::ValueId ch =
+        emitRuntimeCall(ctx, "str.fromByte", irs::IrType::StringRef, {byteVal});
+    (void)emitRuntimeCall(ctx, "hostfs.write", irs::IrType::I32, {handle, ch});
+}
+
+void lowerWriteI32LE(LowerCtx &ctx, irs::ValueId handle, irs::ValueId value) {
+    irs::ValueId n = value;
+    for (int i = 0; i < 4; ++i) {
+        const irs::ValueId b = lowerByteMod256(ctx, n);
+        lowerHostfsWriteByte(ctx, handle, b);
+        n = lowerFloorDiv256(ctx, n);
+    }
+}
+
+irs::ValueId lowerReadI32LE(LowerCtx &ctx, std::string_view fileName, irs::ValueId handle) {
+    const irs::Operand dest = declareTempLocal(ctx, "$ri32.", irs::IrType::I32);
+    emitStore(ctx, dest, emitConstI32(ctx, 0));
+    irs::ValueId shift = emitConstI32(ctx, 1); // multiplier 256^i
+    for (int i = 0; i < 4; ++i) {
+        const irs::ValueId one = emitConstI32(ctx, 1);
+        const irs::ValueId chunk =
+            emitRuntimeCall(ctx, "hostfs.read", irs::IrType::StringRef, {handle, one});
+        const irs::ValueId empty = emitConstString(ctx, "");
+        const irs::ValueId gotEmpty =
+            emitBinaryOp(ctx, irs::Op::CmpEq, chunk, empty, irs::IrType::Bool);
+        const std::string atEof = newLabel(ctx, "ri32.eof.");
+        const std::string have = newLabel(ctx, "ri32.ok.");
+        const std::string cont = newLabel(ctx, "ri32.c.");
+        sealBlock(ctx, branchIfTo(gotEmpty, atEof, have));
+        beginBlock(ctx, atEof);
+        storeFileSlot(ctx, fileName, "eof", emitConstI32(ctx, 1));
+        sealBlock(ctx, branchTo(cont));
+        beginBlock(ctx, have);
+        {
+            const irs::ValueId b =
+                emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {chunk});
+            const irs::ValueId contrib =
+                emitBinaryOp(ctx, irs::Op::Mul, b, shift, irs::IrType::I32);
+            const irs::ValueId cur = emitLoad(ctx, dest, irs::IrType::I32);
+            emitStore(ctx, dest, emitBinaryOp(ctx, irs::Op::Add, cur, contrib, irs::IrType::I32));
+            shift = emitBinaryOp(ctx, irs::Op::Mul, shift, emitConstI32(ctx, 256), irs::IrType::I32);
+            sealBlock(ctx, branchTo(cont));
+        }
+        beginBlock(ctx, cont);
+    }
+    return emitLoad(ctx, dest, irs::IrType::I32);
+}
+
+void lowerWriteCharByte(LowerCtx &ctx, irs::ValueId handle, irs::ValueId code) {
+    lowerHostfsWriteByte(ctx, handle, lowerByteMod256(ctx, code));
+}
+
+irs::ValueId lowerReadCharByte(LowerCtx &ctx, std::string_view fileName, irs::ValueId handle) {
+    const irs::ValueId one = emitConstI32(ctx, 1);
+    const irs::ValueId chunk =
+        emitRuntimeCall(ctx, "hostfs.read", irs::IrType::StringRef, {handle, one});
+    const irs::ValueId empty = emitConstString(ctx, "");
+    const irs::ValueId gotEmpty =
+        emitBinaryOp(ctx, irs::Op::CmpEq, chunk, empty, irs::IrType::Bool);
+    const irs::Operand dest = declareTempLocal(ctx, "$rch.", irs::IrType::I32);
+    const std::string atEof = newLabel(ctx, "rch.eof.");
+    const std::string have = newLabel(ctx, "rch.ok.");
+    const std::string merge = newLabel(ctx, "rch.m.");
+    sealBlock(ctx, branchIfTo(gotEmpty, atEof, have));
+    beginBlock(ctx, atEof);
+    storeFileSlot(ctx, fileName, "eof", emitConstI32(ctx, 1));
+    emitStore(ctx, dest, emitConstI32(ctx, 0));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, have);
+    emitStore(ctx, dest, emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {chunk}));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, merge);
+    return emitLoad(ctx, dest, irs::IrType::I32);
+}
+
+/// Stage 3: `real` typed components are 24-byte ASCII (`basic.str` / `coerce.flt`), not IEEE.
+void lowerWriteRealAscii(LowerCtx &ctx, irs::ValueId handle, irs::ValueId value) {
+    irs::ValueId s = emitRuntimeCall(ctx, "basic.str", irs::IrType::StringRef, {value});
+    // Pad/truncate to 24 bytes with spaces (simple: write STR then pad with spaces to 24).
+    const irs::Operand buf = declareTempLocal(ctx, "$rasc.", irs::IrType::StringRef);
+    emitStore(ctx, buf, s);
+    const irs::Operand len = declareTempLocal(ctx, "$rlen.", irs::IrType::I32);
+    // LEN via BASIC CALL_FUNC 2,3,1 — reuse as runtime name basic.len
+    {
+        irs::Instr call;
+        call.op = irs::Op::CallRuntime;
+        call.type = irs::IrType::I32;
+        call.result = ctx.function.newTemp();
+        call.text = "basic.len";
+        call.args = {emitLoad(ctx, buf, irs::IrType::StringRef)};
+        const irs::ValueId L = call.result;
+        ctx.block.body.push_back(std::move(call));
+        emitStore(ctx, len, L);
+    }
+    const std::string padLoop = newLabel(ctx, "rpad.");
+    const std::string padDone = newLabel(ctx, "rpad.done.");
+    sealBlock(ctx, branchTo(padLoop));
+    beginBlock(ctx, padLoop);
+    {
+        const irs::ValueId L = emitLoad(ctx, len, irs::IrType::I32);
+        const irs::ValueId lt =
+            emitBinaryOp(ctx, irs::Op::CmpLt, L, emitConstI32(ctx, 24), irs::IrType::Bool);
+        const std::string body = newLabel(ctx, "rpad.body.");
+        sealBlock(ctx, branchIfTo(lt, body, padDone));
+        beginBlock(ctx, body);
+        const irs::ValueId cur = emitLoad(ctx, buf, irs::IrType::StringRef);
+        const irs::ValueId space = emitConstString(ctx, " ");
+        const irs::ValueId next =
+            emitRuntimeCall(ctx, "str.concat", irs::IrType::StringRef, {cur, space});
+        emitStore(ctx, buf, next);
+        emitStore(ctx, len, emitBinaryOp(ctx, irs::Op::Add, L, emitConstI32(ctx, 1), irs::IrType::I32));
+        sealBlock(ctx, branchTo(padLoop));
+    }
+    beginBlock(ctx, padDone);
+    // If longer than 24, still write full STR (size not strictly enforced for oversize).
+    const irs::ValueId data = emitLoad(ctx, buf, irs::IrType::StringRef);
+    (void)emitRuntimeCall(ctx, "hostfs.write", irs::IrType::I32, {handle, data});
+}
+
+irs::ValueId lowerReadRealAscii(LowerCtx &ctx, std::string_view fileName, irs::ValueId handle) {
+    const irs::ValueId n = emitConstI32(ctx, 24);
+    const irs::ValueId chunk =
+        emitRuntimeCall(ctx, "hostfs.read", irs::IrType::StringRef, {handle, n});
+    const irs::ValueId empty = emitConstString(ctx, "");
+    const irs::ValueId gotEmpty =
+        emitBinaryOp(ctx, irs::Op::CmpEq, chunk, empty, irs::IrType::Bool);
+    const irs::Operand dest = declareTempLocal(ctx, "$rr.", irs::IrType::F64);
+    const std::string atEof = newLabel(ctx, "rr.eof.");
+    const std::string have = newLabel(ctx, "rr.ok.");
+    const std::string merge = newLabel(ctx, "rr.m.");
+    sealBlock(ctx, branchIfTo(gotEmpty, atEof, have));
+    beginBlock(ctx, atEof);
+    storeFileSlot(ctx, fileName, "eof", emitConstI32(ctx, 1));
+    emitStore(ctx, dest, emitConstF64(ctx, 0.0));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, have);
+    emitStore(ctx, dest,
+              emitRuntimeCall(ctx, "coerce.flt", irs::IrType::F64, {chunk}));
+    sealBlock(ctx, branchTo(merge));
+    beginBlock(ctx, merge);
+    return emitLoad(ctx, dest, irs::IrType::F64);
+}
+
+void lowerWriteScalarComponent(LowerCtx &ctx, std::string_view fileName, const TypePtr &elemType,
+                               irs::ValueId value) {
+    const irs::ValueId handle = loadFileSlot(ctx, fileName, "h", irs::IrType::I32);
+    switch (canonicalTag(elemType)) {
+    case TypeTag::Integer:
+    case TypeTag::Boolean:
+        lowerWriteI32LE(ctx, handle, value);
+        break;
+    case TypeTag::Char:
+        lowerWriteCharByte(ctx, handle, value);
+        break;
+    case TypeTag::Real:
+        lowerWriteRealAscii(ctx, handle, value);
+        break;
+    default:
+        break;
+    }
+}
+
+irs::ValueId lowerReadScalarComponent(LowerCtx &ctx, std::string_view fileName,
+                                      const TypePtr &elemType) {
+    const irs::ValueId handle = loadFileSlot(ctx, fileName, "h", irs::IrType::I32);
+    switch (canonicalTag(elemType)) {
+    case TypeTag::Integer:
+    case TypeTag::Boolean:
+        return lowerReadI32LE(ctx, fileName, handle);
+    case TypeTag::Char:
+        return lowerReadCharByte(ctx, fileName, handle);
+    case TypeTag::Real:
+        return lowerReadRealAscii(ctx, fileName, handle);
+    default:
+        return emitConstI32(ctx, 0);
+    }
+}
+
+void lowerWriteRecordComponent(LowerCtx &ctx, std::string_view fileName,
+                               std::string_view recordVar, const TypePtr &recordType) {
+    const TypePtr peeled = peelTypeAliases(recordType);
+    if (!peeled || peeled->tag != TypeTag::Record) {
+        return;
+    }
+    for (const RecordField &field : peeled->fields) {
+        const auto slot = resolveFieldSlot(ctx, recordVar, field.name);
+        if (!slot) {
+            continue;
+        }
+        const irs::ValueId v = emitLoad(ctx, slot->operand, slot->type);
+        lowerWriteScalarComponent(ctx, fileName, field.type, v);
+    }
+}
+
+void lowerReadRecordComponent(LowerCtx &ctx, std::string_view fileName,
+                              std::string_view recordVar, const TypePtr &recordType) {
+    const TypePtr peeled = peelTypeAliases(recordType);
+    if (!peeled || peeled->tag != TypeTag::Record) {
+        return;
+    }
+    for (const RecordField &field : peeled->fields) {
+        const auto slot = resolveFieldSlot(ctx, recordVar, field.name);
+        if (!slot) {
+            continue;
+        }
+        const irs::ValueId v = lowerReadScalarComponent(ctx, fileName, field.type);
+        emitStore(ctx, slot->operand, v);
+    }
+}
+
+void lowerTypedFileWrite(LowerCtx &ctx, const ast::Stmt &stmt) {
+    if (stmt.args.size() < 2 || !stmt.args[0] || !stmt.args[1]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    TypePtr ft = fileVarType(ctx, foldAsciiLower(fileName));
+    while (ft && ft->tag == TypeTag::Alias) {
+        ft = ft->canonical;
+    }
+    if (!ft || ft->tag != TypeTag::File || !ft->element) {
+        return;
+    }
+    const TypeTag et = canonicalTag(ft->element);
+    if (et == TypeTag::Record) {
+        if (stmt.args[1]->kind != ast::ExprKind::Identifier) {
+            return;
+        }
+        lowerWriteRecordComponent(ctx, fileName, stmt.args[1]->text, ft->element);
+        return;
+    }
+    const irs::ValueId v = lowerExpr(ctx, *stmt.args[1]);
+    lowerWriteScalarComponent(ctx, fileName, ft->element, v);
+}
+
+void lowerTypedFileRead(LowerCtx &ctx, const ast::Stmt &stmt) {
+    if (stmt.args.size() < 2 || !stmt.args[0] || !stmt.args[1]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    TypePtr ft = fileVarType(ctx, foldAsciiLower(fileName));
+    while (ft && ft->tag == TypeTag::Alias) {
+        ft = ft->canonical;
+    }
+    if (!ft || ft->tag != TypeTag::File || !ft->element) {
+        return;
+    }
+    const TypeTag et = canonicalTag(ft->element);
+    if (et == TypeTag::Record) {
+        if (stmt.args[1]->kind != ast::ExprKind::Identifier) {
+            return;
+        }
+        lowerReadRecordComponent(ctx, fileName, stmt.args[1]->text, ft->element);
+        return;
+    }
+    if (stmt.args[1]->kind != ast::ExprKind::Identifier) {
+        return;
+    }
+    const auto slot = resolveSlot(ctx, foldAsciiLower(stmt.args[1]->text));
+    if (!slot) {
+        return;
+    }
+    const irs::ValueId v = lowerReadScalarComponent(ctx, fileName, ft->element);
+    emitStore(ctx, slot->operand, v);
+}
+
+void lowerTextFileWrite(LowerCtx &ctx, const ast::Stmt &stmt, bool newline) {
+    if (stmt.args.empty() || !stmt.args[0]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    const irs::ValueId handle = loadFileSlot(ctx, fileName, "h", irs::IrType::I32);
+    irs::ValueId data = emitConstString(ctx, "");
+    for (std::size_t i = 1; i < stmt.args.size(); ++i) {
+        if (!stmt.args[i]) {
+            continue;
+        }
+        const irs::ValueId piece = lowerToString(ctx, *stmt.args[i]);
+        data = emitRuntimeCall(ctx, "str.concat", irs::IrType::StringRef, {data, piece});
+    }
+    if (newline) {
+        data = emitRuntimeCall(ctx, "str.concat", irs::IrType::StringRef,
+                               {data, emitConstString(ctx, "\n")});
+    }
+    (void)emitRuntimeCall(ctx, "hostfs.write", irs::IrType::I32, {handle, data});
+}
+
+irs::ValueId lowerTextConsumePeek(LowerCtx &ctx, std::string_view fileName) {
+    lowerTextFillPeek(ctx, fileName);
+    const irs::ValueId peek = loadFileSlot(ctx, fileName, "peek", irs::IrType::StringRef);
+    storeFileSlot(ctx, fileName, "peek", emitConstString(ctx, ""));
+    return peek;
+}
+
+void lowerTextReadCharVar(LowerCtx &ctx, std::string_view fileName, const ResolvedSlot &slot) {
+    const irs::ValueId peek = lowerTextConsumePeek(ctx, fileName);
+    const irs::ValueId code = emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {peek});
+    emitStore(ctx, slot.operand, code);
+}
+
+void lowerTextReadStringVar(LowerCtx &ctx, std::string_view fileName, const ResolvedSlot &slot,
+                            bool readln) {
+    const irs::Operand dest = declareTempLocal(ctx, "$trs.", irs::IrType::StringRef);
+    emitStore(ctx, dest, emitConstString(ctx, ""));
+    const std::string loop = newLabel(ctx, "tread.");
+    const std::string done = newLabel(ctx, "tread.done.");
+    sealBlock(ctx, branchTo(loop));
+    beginBlock(ctx, loop);
+    lowerTextFillPeek(ctx, fileName);
+    {
+        const irs::ValueId eofFlag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+        const irs::ValueId atEof =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eofFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string body = newLabel(ctx, "tread.body.");
+        sealBlock(ctx, branchIfTo(atEof, done, body));
+        beginBlock(ctx, body);
+        const irs::ValueId eolnFlag = loadFileSlot(ctx, fileName, "eoln", irs::IrType::I32);
+        const irs::ValueId atEoln =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eolnFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string take = newLabel(ctx, "tread.take.");
+        // Stop before newline; `readln`'s trailing consume (in lowerTextFileRead) eats EOL.
+        sealBlock(ctx, branchIfTo(atEoln, done, take));
+        beginBlock(ctx, take);
+        {
+            const irs::ValueId ch = lowerTextConsumePeek(ctx, fileName);
+            const irs::ValueId cur = emitLoad(ctx, dest, irs::IrType::StringRef);
+            emitStore(ctx, dest,
+                      emitRuntimeCall(ctx, "str.concat", irs::IrType::StringRef, {cur, ch}));
+            if (!readln) {
+                // Token read: stop at whitespace.
+                lowerTextFillPeek(ctx, fileName);
+                const irs::ValueId peek =
+                    loadFileSlot(ctx, fileName, "peek", irs::IrType::StringRef);
+                const irs::ValueId code =
+                    emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {peek});
+                const irs::ValueId sp = emitConstI32(ctx, static_cast<unsigned char>(' '));
+                const irs::ValueId isSp =
+                    emitBinaryOp(ctx, irs::Op::CmpEq, code, sp, irs::IrType::Bool);
+                const irs::ValueId isEof =
+                    emitBinaryOp(ctx, irs::Op::CmpNe,
+                                 loadFileSlot(ctx, fileName, "eof", irs::IrType::I32),
+                                 emitConstI32(ctx, 0), irs::IrType::Bool);
+                const irs::ValueId isEoln =
+                    emitBinaryOp(ctx, irs::Op::CmpNe,
+                                 loadFileSlot(ctx, fileName, "eoln", irs::IrType::I32),
+                                 emitConstI32(ctx, 0), irs::IrType::Bool);
+                const irs::ValueId stop1 =
+                    emitBinaryOp(ctx, irs::Op::Or, isSp, isEof, irs::IrType::Bool);
+                const irs::ValueId stop =
+                    emitBinaryOp(ctx, irs::Op::Or, stop1, isEoln, irs::IrType::Bool);
+                const std::string cont = newLabel(ctx, "tread.cont.");
+                sealBlock(ctx, branchIfTo(stop, done, cont));
+                beginBlock(ctx, cont);
+            }
+            sealBlock(ctx, branchTo(loop));
+        }
+    }
+    beginBlock(ctx, done);
+    emitStore(ctx, slot.operand, emitLoad(ctx, dest, irs::IrType::StringRef));
+}
+
+void lowerTextReadIntVar(LowerCtx &ctx, std::string_view fileName, const ResolvedSlot &slot,
+                         bool asReal) {
+    // Skip spaces/newlines, accumulate token, coerce.
+    const std::string skip = newLabel(ctx, "ti.skip.");
+    const std::string acc = newLabel(ctx, "ti.acc.");
+    const std::string done = newLabel(ctx, "ti.done.");
+    const irs::Operand tok = declareTempLocal(ctx, "$ti.", irs::IrType::StringRef);
+    emitStore(ctx, tok, emitConstString(ctx, ""));
+    sealBlock(ctx, branchTo(skip));
+    beginBlock(ctx, skip);
+    lowerTextFillPeek(ctx, fileName);
+    {
+        const irs::ValueId eofFlag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+        const irs::ValueId atEof =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eofFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string check = newLabel(ctx, "ti.chk.");
+        sealBlock(ctx, branchIfTo(atEof, done, check));
+        beginBlock(ctx, check);
+        const irs::ValueId peek = loadFileSlot(ctx, fileName, "peek", irs::IrType::StringRef);
+        const irs::ValueId code = emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {peek});
+        const irs::ValueId sp = emitConstI32(ctx, static_cast<unsigned char>(' '));
+        const irs::ValueId nl = emitConstI32(ctx, static_cast<unsigned char>('\n'));
+        const irs::ValueId isSp =
+            emitBinaryOp(ctx, irs::Op::CmpEq, code, sp, irs::IrType::Bool);
+        const irs::ValueId isNl =
+            emitBinaryOp(ctx, irs::Op::CmpEq, code, nl, irs::IrType::Bool);
+        const irs::ValueId isWs =
+            emitBinaryOp(ctx, irs::Op::Or, isSp, isNl, irs::IrType::Bool);
+        const std::string eat = newLabel(ctx, "ti.eat.");
+        sealBlock(ctx, branchIfTo(isWs, eat, acc));
+        beginBlock(ctx, eat);
+        (void)lowerTextConsumePeek(ctx, fileName);
+        sealBlock(ctx, branchTo(skip));
+    }
+    beginBlock(ctx, acc);
+    lowerTextFillPeek(ctx, fileName);
+    {
+        const irs::ValueId eofFlag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+        const irs::ValueId atEof =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eofFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string take = newLabel(ctx, "ti.take.");
+        sealBlock(ctx, branchIfTo(atEof, done, take));
+        beginBlock(ctx, take);
+        const irs::ValueId peek = loadFileSlot(ctx, fileName, "peek", irs::IrType::StringRef);
+        const irs::ValueId code = emitRuntimeCall(ctx, "str.seq", irs::IrType::I32, {peek});
+        const irs::ValueId sp = emitConstI32(ctx, static_cast<unsigned char>(' '));
+        const irs::ValueId nl = emitConstI32(ctx, static_cast<unsigned char>('\n'));
+        const irs::ValueId isSp =
+            emitBinaryOp(ctx, irs::Op::CmpEq, code, sp, irs::IrType::Bool);
+        const irs::ValueId isNl =
+            emitBinaryOp(ctx, irs::Op::CmpEq, code, nl, irs::IrType::Bool);
+        const irs::ValueId isWs =
+            emitBinaryOp(ctx, irs::Op::Or, isSp, isNl, irs::IrType::Bool);
+        const std::string stop = newLabel(ctx, "ti.stop.");
+        const std::string more = newLabel(ctx, "ti.more.");
+        sealBlock(ctx, branchIfTo(isWs, stop, more));
+        beginBlock(ctx, stop);
+        sealBlock(ctx, branchTo(done));
+        beginBlock(ctx, more);
+        const irs::ValueId ch = lowerTextConsumePeek(ctx, fileName);
+        const irs::ValueId cur = emitLoad(ctx, tok, irs::IrType::StringRef);
+        emitStore(ctx, tok,
+                  emitRuntimeCall(ctx, "str.concat", irs::IrType::StringRef, {cur, ch}));
+        sealBlock(ctx, branchTo(acc));
+    }
+    beginBlock(ctx, done);
+    const irs::ValueId text = emitLoad(ctx, tok, irs::IrType::StringRef);
+    if (asReal) {
+        emitStore(ctx, slot.operand,
+                  emitRuntimeCall(ctx, "coerce.flt", irs::IrType::F64, {text}));
+    } else {
+        emitStore(ctx, slot.operand,
+                  emitRuntimeCall(ctx, "coerce.int", irs::IrType::I32, {text}));
+    }
+}
+
+void lowerTextFileRead(LowerCtx &ctx, const ast::Stmt &stmt, bool readln) {
+    if (stmt.args.empty() || !stmt.args[0]) {
+        return;
+    }
+    const std::string fileName = stmt.args[0]->text;
+    for (std::size_t i = 1; i < stmt.args.size(); ++i) {
+        if (!stmt.args[i] || stmt.args[i]->kind != ast::ExprKind::Identifier) {
+            continue;
+        }
+        const auto slot = resolveSlot(ctx, foldAsciiLower(stmt.args[i]->text));
+        if (!slot) {
+            continue;
+        }
+        switch (slot->type) {
+        case irs::IrType::Char:
+            lowerTextReadCharVar(ctx, fileName, *slot);
+            break;
+        case irs::IrType::StringRef:
+            lowerTextReadStringVar(ctx, fileName, *slot, readln);
+            break;
+        case irs::IrType::I32:
+        case irs::IrType::Bool:
+            lowerTextReadIntVar(ctx, fileName, *slot, false);
+            break;
+        case irs::IrType::F64:
+            lowerTextReadIntVar(ctx, fileName, *slot, true);
+            break;
+        default:
+            break;
+        }
+    }
+    if (readln) {
+        // Consume through end of line if not already.
+        const std::string loop = newLabel(ctx, "rln.");
+        const std::string done = newLabel(ctx, "rln.done.");
+        sealBlock(ctx, branchTo(loop));
+        beginBlock(ctx, loop);
+        lowerTextFillPeek(ctx, fileName);
+        const irs::ValueId eofFlag = loadFileSlot(ctx, fileName, "eof", irs::IrType::I32);
+        const irs::ValueId atEof =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eofFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string body = newLabel(ctx, "rln.body.");
+        sealBlock(ctx, branchIfTo(atEof, done, body));
+        beginBlock(ctx, body);
+        const irs::ValueId eolnFlag = loadFileSlot(ctx, fileName, "eoln", irs::IrType::I32);
+        const irs::ValueId atEoln =
+            emitBinaryOp(ctx, irs::Op::CmpNe, eolnFlag, emitConstI32(ctx, 0), irs::IrType::Bool);
+        const std::string eat = newLabel(ctx, "rln.eat.");
+        const std::string cont = newLabel(ctx, "rln.cont.");
+        sealBlock(ctx, branchIfTo(atEoln, eat, cont));
+        beginBlock(ctx, eat);
+        (void)lowerTextConsumePeek(ctx, fileName);
+        sealBlock(ctx, branchTo(done));
+        beginBlock(ctx, cont);
+        (void)lowerTextConsumePeek(ctx, fileName);
+        sealBlock(ctx, branchTo(loop));
+        beginBlock(ctx, done);
+    }
+}
+
 void lowerWriteCall(LowerCtx &ctx, const std::string &foldedName,
                     const std::vector<std::unique_ptr<ast::Expr>> &args) {
     std::vector<irs::ValueId> argValues;
@@ -1004,11 +1793,55 @@ void lowerReadCall(LowerCtx &ctx, const std::string &foldedName,
 
 void lowerCallStmt(LowerCtx &ctx, const ast::Stmt &stmt) {
     const std::string folded = foldAsciiLower(stmt.name);
+    if (folded == "assign") {
+        lowerAssignFile(ctx, stmt);
+        return;
+    }
+    if (folded == "reset") {
+        lowerResetRewrite(ctx, stmt, true);
+        return;
+    }
+    if (folded == "rewrite") {
+        lowerResetRewrite(ctx, stmt, false);
+        return;
+    }
+    if (folded == "close") {
+        if (!stmt.args.empty() && stmt.args[0]) {
+            lowerCloseFile(ctx, stmt.args[0]->text);
+        }
+        return;
+    }
     if (folded == "write" || folded == "writeln") {
+        if (!stmt.args.empty() && stmt.args[0] &&
+            stmt.args[0]->kind == ast::ExprKind::Identifier &&
+            isFileVarName(ctx, foldAsciiLower(stmt.args[0]->text))) {
+            const TypeTag ft = canonicalTag(stmt.args[0]->type);
+            if (ft == TypeTag::File) {
+                lowerTypedFileWrite(ctx, stmt);
+                return;
+            }
+            if (ft == TypeTag::Text) {
+                lowerTextFileWrite(ctx, stmt, folded == "writeln");
+                return;
+            }
+        }
         lowerWriteCall(ctx, folded, stmt.args);
         return;
     }
     if (folded == "read" || folded == "readln") {
+        if (!stmt.args.empty() && stmt.args[0] &&
+            stmt.args[0]->kind == ast::ExprKind::Identifier &&
+            isFileVarName(ctx, foldAsciiLower(stmt.args[0]->text))) {
+            const TypeTag ft = canonicalTag(stmt.args[0]->type);
+            if (ft == TypeTag::File) {
+                lowerTypedFileRead(ctx, stmt);
+                return;
+            }
+            if (ft == TypeTag::Text) {
+                lowerTextFileRead(ctx, stmt, folded == "readln");
+                return;
+            }
+        }
         lowerReadCall(ctx, folded, stmt.args);
         return;
     }
@@ -1338,6 +2171,10 @@ void lowerLocalsAndConsts(LowerCtx &ctx, const ast::Block &block) {
                 declareRecordFields(ctx, name, localType);
                 continue;
             }
+            if (peeled && (peeled->tag == TypeTag::Text || peeled->tag == TypeTag::File)) {
+                declareFileSlots(ctx, name, localType);
+                continue;
+            }
             const irs::IrType irLocalType = toIrType(localType);
             const auto slot = static_cast<std::uint32_t>(ctx.function.locals.size());
             irs::Local local{name, irLocalType};
@@ -1385,6 +2222,7 @@ irs::Function lowerFunctionCore(const SymbolTable &symbols,
                  {},
                  {},
                  {},
+                 {},
                  0,
                  resultName,
                  {}};
@@ -1405,6 +2243,18 @@ irs::Function lowerFunctionCore(const SymbolTable &symbols,
 
     lowerLocalsAndConsts(ctx, block);
     emitArrayDims(ctx);
+    for (const auto &[folded, fileType] : ctx.fileVars) {
+        (void)fileType;
+        // Locals are stored under original casing in `locals[].name`; resolve via slots.
+        storeFileSlot(ctx, folded, "path", emitConstString(ctx, ""));
+        storeFileSlot(ctx, folded, "h", emitConstI32(ctx, 0));
+        storeFileSlot(ctx, folded, "rd", emitConstI32(ctx, 0));
+        storeFileSlot(ctx, folded, "eof", emitConstI32(ctx, 0));
+        if (canonicalTag(fileType) == TypeTag::Text) {
+            storeFileSlot(ctx, folded, "peek", emitConstString(ctx, ""));
+            storeFileSlot(ctx, folded, "eoln", emitConstI32(ctx, 0));
+        }
+    }
 
     if (resultName) {
         ctx.resultValue = emitZeroValue(ctx, returnType);

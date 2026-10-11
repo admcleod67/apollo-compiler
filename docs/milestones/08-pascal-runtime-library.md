@@ -208,31 +208,37 @@ met.
 file-service** interface (host-agnostic façade). See
 [`pascal-file-io.md`](../pascal-file-io.md) **Track A**.
 
-**Prerequisite:** Gemini / host filesystem library usable from the standalone runner
-without hard-wiring POSIX or Pick VOC/MD paths in Apollo (see Milestone 7 —
-*Why Pascal `file` I/O waits*).
+**Prerequisite:** Gemini M22 `hostfs` namespace **7** — met
+(`OpenRead`/`OpenWrite`/`OpenAppend`/`Read`/`Write`/`Close` via `CALL_FUNC`; load
+`gemini-module-hostfs`).
 
-- Types: `file of T`, `text` (scope of bare `file` pinned in Stage notes).
-- Operations: a minimal sequential set (for example `reset` / `rewrite`, typed
-  `read` / `write`, `eof` / `eoln` as appropriate).
-- Builtin or module binding for file ops; **diagnose** when the host does not provide
-  the required file services (capability check, not a Pick-specific language fork).
+**Stage 3 notes**
+
+| Topic | Lock |
+|-------|------|
+| Types | `text`; `file of T` with `T` ∈ {`integer`,`real`,`boolean`,`char`, flat record of those}. Bare `file`, arrays, nested records, `string` components diagnosed. |
+| Paths | `assign(f, path)` + `reset`/`rewrite(f)`, and `reset`/`rewrite(f, path)` (path implies assign). |
+| Emit | `CallRuntime` → `CALL_FUNC 7, <id>, <arity>` (hardcoded; no Gemini headers in Apollo). |
+| Text | Buffered 1-byte hostfs reads; Apollo owns `eof`/`eoln` / line assembly. |
+| Typed layout | LE `i32` / `boolean`; `u8` `char`; flat records field-order. `real` = 24-byte ASCII (`STR`/`COERCE_FLT`) — no IEEE bitcast opcode. |
+| Runtime slots | Per file var: `$path`, `$h`, `$rd`, `$eof`; text also `$peek`, `$eoln`. |
 
 **Explicit non-goals (Stage 3):** Pick / MultiValue database API (`PickFile`,
 `PickOpen`, select lists, attr helpers) — that is **Track B** /
-[Milestone 9](09-pick-database-api.md). Whether a Pick host ever exposes Wirth files
-through the façade remains a runtime capability decision.
+[Milestone 9](09-pick-database-api.md). Turbo `BlockRead`/`BlockWrite`; field widths;
+random access; `get`/`put` as separate names.
 
 **Acceptance criteria**
 
-- [ ] Host FS façade available and documented on the VM side.
-- [ ] A small file-I/O example `--emit`s and runs on the standalone runner (with modules /
-      façade bound as required).
-- [ ] Dialect doc and [`pascal-file-io.md`](../pascal-file-io.md) describe the supported
+- [x] Host FS façade available and documented on the VM side (Gemini M22).
+- [x] File-I/O examples `--emit` and run on `gemini-vm` with hostfs (and basic for text
+      numeric `STR`): [`examples/filetext.pas`](../../examples/filetext.pas),
+      [`examples/filetyped.pas`](../../examples/filetyped.pas).
+- [x] Dialect doc and [`pascal-file-io.md`](../pascal-file-io.md) describe the supported
       surface and non-goals.
-- [ ] `ctest` green.
+- [x] `ctest` green.
 
-**Status:** not started (blocked on host FS).
+**Status:** completed.
 
 ---
 
@@ -243,9 +249,7 @@ through the façade remains a runtime capability decision.
       (field widths / real print defaults remain documented deviations).
 - [x] Stage 1b either shipped or still clearly blocked on the language module / `CALL_FUNC`
       path, with the Wirth math set named here.
-- [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
-      **M8 may close after Stages 1–2** if the host FS façade has not arrived; Stage 3
-      remains the home for files rather than a new milestone.
+- [x] File I/O shipped (Stage 3) on Gemini hostfs.
 - [x] Multi-language expansion remains deferred as Milestone 11; PickDB is Milestone 9.
 - [x] Dialect overview stays the user-facing source of truth for what is supported.
 - [x] `ctest` green on a clean configure/build.
@@ -259,7 +263,7 @@ through the façade remains a runtime capability decision.
 | Stage 1 — Standard functions | completed |
 | Stage 1b — Transcendental math | completed |
 | Stage 2 — Console I/O fidelity | completed |
-| Stage 3 — File I/O | not started (blocked on host FS) |
+| Stage 3 — File I/O | completed |
 
 ---
 

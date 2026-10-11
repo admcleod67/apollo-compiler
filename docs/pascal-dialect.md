@@ -22,17 +22,18 @@ These identifiers are **keywords** (case-insensitive). They cannot be used as na
 programs, types, variables, constants, or subprograms.
 
 **Used in this dialect:**  
-`and` `array` `begin` `case` `const` `div` `do` `downto` `else` `end` `for` `function`
-`if` `mod` `not` `of` `or` `procedure` `program` `record` `repeat` `then` `to` `type`
-`until` `var` `while`
+`and` `array` `begin` `case` `const` `div` `do` `downto` `else` `end` `file` `for`
+`function` `if` `mod` `not` `of` `or` `procedure` `program` `record` `repeat` `then`
+`to` `type` `until` `var` `while`
 
 **Reserved but not supported** (diagnosed or rejected when used as language features):  
-`file` `goto` `in` `label` `nil` `packed` `set` `with`
+`goto` `in` `label` `nil` `packed` `set` `with`
 
 **Predeclared names** (ordinary identifiers, not scanner keywords):  
-`integer` `real` `boolean` `char`, the console builtins `write` `writeln` `read` `readln`,
-and the standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc` `round`
-`sqrt` `sin` `cos` `arctan` `ln` `exp` (see [Standard functions](#standard-functions)).
+`integer` `real` `boolean` `char` `string` `text`, the console/file builtins `write`
+`writeln` `read` `readln` `assign` `reset` `rewrite` `close` `eof` `eoln`, and the
+standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc` `round` `sqrt`
+`sin` `cos` `arctan` `ln` `exp` (see [Standard functions](#standard-functions)).
 
 ---
 
@@ -60,10 +61,12 @@ and the standard functions `ord` `chr` `succ` `pred` `odd` `abs` `sqr` `trunc` `
 | Type aliases | `type t = …` |
 | `array [lo..hi] of T` | Bounds must be **constant** integers (`lo ≤ hi`); indexable as `a[i]` |
 | Flat `record` | Field list; field select `r.f`; nested record *field types* are rejected |
+| `text` | Sequential text file |
+| `file of T` | Typed component file; `T` is `integer` / `real` / `boolean` / `char` or a flat record of those. Bare `file`, arrays, nested records, and `string` components are diagnosed |
 
 **Assignability (high level):** same canonical type, or **integer → real** widening in
 expressions and assignments. Whole-array and whole-record assign use structural rules
-(see below).
+(see below). File variables are not assignable.
 
 ---
 
@@ -174,13 +177,35 @@ statement-only (`write` / `writeln` / `read` / `readln`).
 |-------|-----------|--------|
 | Ordinal / arithmetic | `ord` … `round` | Supported (Milestone 8 Stage 1) |
 | Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Supported (Milestone 8 Stage 1b) |
-| File status | `eof`, `eoln` | With file I/O (Stage 3); optional console later |
+| File status | `eof`, `eoln` | Supported on file variables (Stage 3); `eoln` is text-only |
+
+### File I/O (Milestone 8 Stage 3)
+
+| Builtin | Shape | Notes |
+|---------|-------|-------|
+| `assign(f, path)` | statement | Bind path string to file variable |
+| `reset(f)` / `reset(f, path)` | statement | Open for read (`hostfs.OpenRead`); path form implies assign |
+| `rewrite(f)` / `rewrite(f, path)` | statement | Open for write/truncate (`hostfs.OpenWrite`) |
+| `close(f)` | statement | Close handle |
+| `eof(f)` | expression → `boolean` | Text and typed files |
+| `eoln(f)` | expression → `boolean` | Text files only |
+| `read` / `readln` / `write` / `writeln` | optional first arg file | Else console (unchanged) |
+
+Typed `file of T` transfers one component per `read`/`write` (no `writeln`/`readln` on typed
+files). Component layout: little-endian `integer`/`boolean` (4 bytes), `char` (1 byte);
+`real` is a 24-byte ASCII field (`STR` / `COERCE_FLT`) because the VM has no float-bitcast
+opcode. Flat records serialize fields in declaration order.
+
+Running file programs on `gemini-vm` requires `--modules` (or `GEMINI_MODULES_PATH`) so
+`gemini-module-hostfs` loads; text numeric formatting also uses BASIC `STR`/`LEN` from
+`gemini-module-basic`.
 
 Not planned in Milestone 8: `new` / `dispose`, `pack` / `unpack`, `page`. Field widths and
 Turbo string helpers (`length`, `copy`, `pos`, …) may land in optional
 [Milestone 10](milestones/10-pascal-dialect-polish.md). Pick database access is
 [Milestone 9](milestones/09-pick-database-api.md). See also
-[Milestone 8](milestones/08-pascal-runtime-library.md).
+[Milestone 8](milestones/08-pascal-runtime-library.md) and
+[`pascal-file-io.md`](pascal-file-io.md).
 
 ---
 
@@ -212,10 +237,8 @@ helpers) over a second complete `program` inside an include.
 - `write` field widths / TP-style real formatting and Turbo string helpers — optional
   [Milestone 10](milestones/10-pascal-dialect-polish.md)
 
-`file` / `text` I/O is planned as [Milestone 8](milestones/08-pascal-runtime-library.md)
-Stage 3 against Gemini’s generic file-service façade; it is not supported today. Pick
-database API: [Milestone 9](milestones/09-pick-database-api.md). Design split:
-[`pascal-file-io.md`](pascal-file-io.md).
+Pick database API: [Milestone 9](milestones/09-pick-database-api.md). Wirth vs Pick file
+design: [`pascal-file-io.md`](pascal-file-io.md).
 
 ---
 

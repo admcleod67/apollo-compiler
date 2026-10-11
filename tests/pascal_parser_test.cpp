@@ -30,6 +30,7 @@ struct ScanParse {
 using apollo::pascal::ast::BinaryOp;
 using apollo::pascal::ast::ExprKind;
 using apollo::pascal::ast::StmtKind;
+using apollo::pascal::ast::TypeKind;
 using apollo::pascal::ast::UnaryOp;
 
 } // namespace
@@ -321,14 +322,25 @@ int main() {
         }
     }
 
-    // file type rejected
+    // file of T accepted
     {
         ScanParse run("file.pas", "program P; var f: file of integer; begin end.");
-        if (run.diagnostics.errorCount() == 0) {
-            return fail("file type should diagnose");
+        if (run.diagnostics.errorCount() != 0 || !run.program) {
+            return fail("file of integer should parse");
         }
-        if (!run.program) {
-            return fail("file type error should not prevent a Program root");
+        if (run.program->block.vars.size() != 1 ||
+            run.program->block.vars[0].type.kind != TypeKind::File ||
+            !run.program->block.vars[0].type.element ||
+            run.program->block.vars[0].type.element->name != "integer") {
+            return fail("file of integer AST mismatch");
+        }
+    }
+
+    // bare file rejected
+    {
+        ScanParse run("barefile.pas", "program P; var f: file; begin end.");
+        if (run.diagnostics.errorCount() == 0) {
+            return fail("bare file should diagnose");
         }
     }
 
