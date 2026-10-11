@@ -150,7 +150,7 @@ Builtins: `write`, `writeln`, `read`, `readln` (console only).
 - `read` / `readln` of `real` uses float input (`INPUT_FLT`).
 - **Known deviations:** real output uses the VM’s default `PRINT_VAL` formatting (for
   example `1.0` may print as `1`). Pascal-style field widths such as `write(x:8:2)` are
-  not supported.
+  not supported yet (optional [Milestone 10](milestones/10-pascal-dialect-polish.md)).
 
 ---
 
@@ -176,8 +176,10 @@ statement-only (`write` / `writeln` / `read` / `readln`).
 | Transcendental | `sqrt`, `sin`, `cos`, `arctan`, `ln`, `exp` | Supported (Milestone 8 Stage 1b) |
 | File status | `eof`, `eoln` | With file I/O (Stage 3); optional console later |
 
-Not planned in Milestone 8: `new` / `dispose`, `pack` / `unpack`, `page`, Turbo string
-helpers (`length`, `copy`, `pos`, …). See
+Not planned in Milestone 8: `new` / `dispose`, `pack` / `unpack`, `page`. Field widths and
+Turbo string helpers (`length`, `copy`, `pos`, …) may land in optional
+[Milestone 10](milestones/10-pascal-dialect-polish.md). Pick database access is
+[Milestone 9](milestones/09-pick-database-api.md). See also
 [Milestone 8](milestones/08-pascal-runtime-library.md).
 
 ---
@@ -203,13 +205,17 @@ helpers) over a second complete `program` inside an include.
 - Units (`unit` / `uses`) and separate compilation
 - Pointers / heap, sets, `with`, `goto` / `label`
 - Nested record types as fields; enumerated / subrange *types* as a full type system
+  (light slices may appear in [Milestone 10](milestones/10-pascal-dialect-polish.md))
 - Objects, overlays, inline assembler, graphics
 - Full directive language (`{$IFDEF}`, `{$R+}`, …) beyond `{$I}` and warn-on-unknown
-- Turbo string helpers (`length`, `copy`, `pos`, …); `pack` / `unpack`; `page`
+- `pack` / `unpack`; `page`
+- `write` field widths / TP-style real formatting and Turbo string helpers — optional
+  [Milestone 10](milestones/10-pascal-dialect-polish.md)
 
 `file` / `text` I/O is planned as [Milestone 8](milestones/08-pascal-runtime-library.md)
-Stage 3 against Gemini’s generic file-service façade; it is not supported today. Design
-split (Wirth files vs later Pick database API): [`pascal-file-io.md`](pascal-file-io.md).
+Stage 3 against Gemini’s generic file-service façade; it is not supported today. Pick
+database API: [Milestone 9](milestones/09-pick-database-api.md). Design split:
+[`pascal-file-io.md`](pascal-file-io.md).
 
 ---
 

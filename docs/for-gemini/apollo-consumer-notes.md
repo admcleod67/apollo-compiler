@@ -46,8 +46,9 @@ documented on the Gemini side.
   version if BASIC invariants must hold).
 - Pascal field widths / TP-style real formatting → language module or later binding.
 - Host filesystem façade / Pascal Wirth `file` / `text` I/O (Milestone 8 Stage 3;
-  [`pascal-file-io.md`](../pascal-file-io.md) Track A). PickDB / MultiValue API is a
-  separate later track.
+  [`pascal-file-io.md`](../pascal-file-io.md) Track A). PickDB / MultiValue API is
+  [Milestone 9](../milestones/09-pick-database-api.md). Field widths / string polish:
+  optional [Milestone 10](../milestones/10-pascal-dialect-polish.md).
 
 **Shared math (Gemini Milestone 21) — consumed by Apollo Stage 1b:** unary real→real
 `CALL_FUNC` under namespace **`math`** (`6`). Apollo binds six
@@ -216,9 +217,9 @@ module formatting (still open).
 **Typical pattern today (Apollo)**
 
 - No Pascal file I/O in the supported dialect; waiting on a **host-agnostic file-service
-  façade** before Milestone 8 Stage 3 (Wirth Track A). Pick database access is a
-  **separate** later module track (`PickDB`), not a substitute for Pascal files — see
-  [`pascal-file-io.md`](../pascal-file-io.md).
+  façade** before Milestone 8 Stage 3 (Wirth Track A). Pick database access is
+  [Milestone 9](../milestones/09-pick-database-api.md) (`PickDB`), not a substitute for
+  Pascal files — see [`pascal-file-io.md`](../pascal-file-io.md).
 
 **Possible direction**
 
@@ -290,3 +291,4 @@ No Apollo release should **require** the changes listed in this document.
 | 2026-09 | Apollo M8 Stage 2 **consumed** Gemini M20 opcodes (`PRINT_CHAR`, `INPUT_FLT`, `COERCE_FLT`, `MOD`); field widths / real print defaults still deferred. |
 | 2026-09 | Apollo M8 Stage 1b **consumed** Gemini shared math (`CALL_FUNC` ns `6`; six Wirth funcs; `tan` unbound). |
 | 2026-10 | File I/O design: Wirth Track A (M8 Stage 3) vs later PickDB Track B; façade capability left open for Pick hosts ([`pascal-file-io.md`](../pascal-file-io.md)). |
+| 2026-10 | Roadmap: M9 PickDB, optional M10 dialect polish (field widths / strings), multi-language → M11. |

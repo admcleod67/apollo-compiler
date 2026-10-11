@@ -8,8 +8,8 @@ Stage 3.
 
 | Track | What | Owner / timing |
 |-------|------|----------------|
-| **A — Wirth files** | `text`, `file`, `file of T`, sequential I/O against Gemini’s **generic file-service** interface | Apollo M8 Stage 3 (after host FS façade) |
-| **B — Pick database API** | Explicit Pick module (e.g. `PickDB`): `PickFile`, open/read/write/select, attr helpers | Later; Gemini Pick + Apollo module binding — **not** Stage 3 |
+| **A — Wirth files** | `text`, `file`, `file of T`, sequential I/O against Gemini’s **generic file-service** interface | [Milestone 8](milestones/08-pascal-runtime-library.md) Stage 3 (after host FS façade) |
+| **B — Pick database API** | Explicit Pick module (e.g. `PickDB`): `PickFile`, open/read/write/select, attr helpers | [Milestone 9](milestones/09-pick-database-api.md) — **not** M8 Stage 3 |
 
 Pick MultiValue access does **not** replace Track A. Apollo implements the standard Pascal
 file model regardless of host. Whether a Pick personality ever **also** exposes Wirth
@@ -69,12 +69,14 @@ end.
 
 ---
 
-## Track B — Pick database API (later)
+## Track B — Pick database API ([Milestone 9](milestones/09-pick-database-api.md))
 
 ### Goal
 
 Authentic Pick / MultiValue access for applications that need files, item IDs, records,
 attributes, values, and select lists — without pretending those are stream `file of T`.
+This is the next numbered milestone after M8 Stage 3 closes (or is explicitly blocked),
+and comes **before** optional dialect polish (M10) and multi-language expansion (M11).
 
 ### Why not emulate with `file of T`
 
@@ -124,7 +126,8 @@ Apollo Pascal language
   └── Track B: PickDB (later)    →  Gemini DB / Pick plugin      →  VOC/MD (etc.)
 ```
 
-- **Stage 3** implements Track A only.
-- Track B is platform integration, scheduled separately.
+- **M8 Stage 3** implements Track A only.
+- **Milestone 9** implements Track B (PickDB).
 - “Pascal files on Pick?” remains open at the façade/capability layer, not as a
   language fork.
+- Field widths / string helpers: optional [Milestone 10](milestones/10-pascal-dialect-polish.md).

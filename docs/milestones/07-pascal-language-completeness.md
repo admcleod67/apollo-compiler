@@ -12,7 +12,7 @@ It follows:
 - [Milestone 5 — Code generator](05-code-generator.md) (emit path exists)
 - [Milestone 6 — Standalone VM execution](06-standalone-vm-execution.md) (completed;
   hello/count on `gemini-vm`)
-- And **defers** [Milestone 9 — Multi-language expansion](09-multi-language-expansion.md)
+- And **defers** [Milestone 11 — Multi-language expansion](11-multi-language-expansion.md)
   until Pascal is a credible console language (dialect plus runtime library)
 
 **Priority:** language completeness over additional source languages.
@@ -89,7 +89,7 @@ Wirth surface still deferred or diagnosed:
 - Enumerated and subrange *types* as a full type system (array bounds may stay as today
   until needed).
 - Objects, overlays, inline assembler, graphics, TP string length types.
-- Additional source languages ([Milestone 9](09-multi-language-expansion.md)).
+- Additional source languages ([Milestone 11](11-multi-language-expansion.md)).
 
 ### Why Pascal `file` I/O waits
 
@@ -348,7 +348,8 @@ parameters; record or array function results; `file of record`.
 - [x] `{$I}` includes compose a multi-file program that `--emit`s cleanly.
 - [x] README documents the supported Wirth console / Pascal80-style dialect and explicit
   non-goals (units, files, pointers, sets, …).
-- [x] Milestone 9 remains deferred; no second language front-end started as part of M7.
+- [x] Multi-language expansion remains deferred; no second language front-end started as
+      part of M7.
 - [x] `ctest` green on a clean configure/build.
 
 ---
@@ -366,14 +367,16 @@ parameters; record or array function results; `file of record`.
 
 ## Boundary with adjacent milestones
 
-| Concern | M5–M6 | M7 | M8 | M9 |
+| Concern | M5–M6 | M7 | M8 | M9+ |
 |---------|-------|----|----|-----|
 | Runnable hello/count | Done | Regression | Regression | — |
 | Wirth data / control gaps | Partial | Owns | Regression | — |
 | `{$I}` includes | No | Yes | Regression | — |
-| Standard functions / console / files | No | Deferred | Owns | — |
-| Units / full TP3 | No | No | No (still later) | No |
-| Second languages | No | No | Deferred | Owns when resumed |
+| Standard functions / console / Wirth files | No | Deferred | Owns | — |
+| PickDB | No | No | Design | M9 owns |
+| Field widths / string polish | No | No | Deferred | M10 (optional) |
+| Units / full TP3 | No | No | No (still later) | Backlog |
+| Second languages | No | No | Deferred | M11 when resumed |
 
 ---
 
@@ -385,5 +388,7 @@ parameters; record or array function results; `file of record`.
 - Sets, pointers (file I/O is owned by M8 Stage 3 after the host FS façade — see
   **Why Pascal `file` I/O waits** above).
 - Richer directives and range-check pragmas.
-- [Milestone 9 — Multi-language expansion](09-multi-language-expansion.md) once Pascal is
-  a credible console language (dialect + runtime library).
+- [Milestone 9 — Pick database API](09-pick-database-api.md), optional
+  [Milestone 10 — dialect polish](10-pascal-dialect-polish.md), then
+  [Milestone 11 — Multi-language expansion](11-multi-language-expansion.md) once Pascal is
+  credible for Gemini (dialect + runtime library + PickDB).

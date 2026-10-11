@@ -9,10 +9,10 @@ runtime path for Gemini applications outside the Gemini Pick OS.
 
 **Initial language:** Pascal — see [Pascal dialect](pascal-dialect.md) for supported
 behaviour; [Milestone 7](milestones/07-pascal-language-completeness.md) for the dialect
-delivery notes; [Milestone 8](milestones/08-pascal-runtime-library.md) for the next
-runtime-library track.  
+delivery notes; [Milestone 8](milestones/08-pascal-runtime-library.md) for the runtime
+library; [Milestone 9](milestones/09-pick-database-api.md) for PickDB.  
 **Long-term languages (deferred):** BASIC, COMAL, Fortran, COBOL
-([Milestone 9](milestones/09-multi-language-expansion.md))
+([Milestone 11](milestones/11-multi-language-expansion.md))
 
 ## High-level goals
 
@@ -76,5 +76,7 @@ text from the book is used directly; only the conceptual methodology informs the
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) — completed
 - [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md) — completed
 - [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
-- [Milestone 9 — Multi-language expansion](milestones/09-multi-language-expansion.md) (deferred)
+- [Milestone 9 — Pick database API](milestones/09-pick-database-api.md)
+- [Milestone 10 — Pascal dialect polish](milestones/10-pascal-dialect-polish.md) (optional)
+- [Milestone 11 — Multi-language expansion](milestones/11-multi-language-expansion.md) (deferred)
 - Draft VM consumer notes (for handoff): [`for-gemini/apollo-consumer-notes.md`](for-gemini/apollo-consumer-notes.md)

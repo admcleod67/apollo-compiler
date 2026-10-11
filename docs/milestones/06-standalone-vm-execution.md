@@ -202,4 +202,4 @@ alloc) so BASIC and Pascal do not each bake Pick paths into the plugin.
 - Optional later extraction of the portable runtime into a shared package/repo if
   cross-project dependency pain justifies it.
 - [Milestone 8 — Pascal runtime library](08-pascal-runtime-library.md) (next).
-- [Milestone 9 — Multi-language expansion](09-multi-language-expansion.md) (deferred).
+- [Milestone 11 — Multi-language expansion](11-multi-language-expansion.md) (deferred).

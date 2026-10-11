@@ -4,10 +4,11 @@ This document is an **orienting roadmap**. Priorities and scope may change as Ap
 the Gemini System evolve.
 
 **Current priority:** [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
-(ordinal/arithmetic functions, then console I/O fidelity, then file I/O; transcendentals
-when a math module exists). The Milestone 7 dialect skeleton is complete. Further source
-languages remain deferred as
-[Milestone 9](milestones/09-multi-language-expansion.md).
+(finish Wirth file I/O / Stage 3 when the host file-service façade is ready). Next:
+[Milestone 9 — Pick database API](milestones/09-pick-database-api.md) for Gemini Pick.
+Optional dialect polish is [Milestone 10](milestones/10-pascal-dialect-polish.md). Further
+source languages remain deferred as
+[Milestone 11](milestones/11-multi-language-expansion.md).
 
 ## Milestone index
 
@@ -23,8 +24,10 @@ prefixes sort lexicographically).
 - [Milestone 6 — Standalone VM execution (completed)](milestones/06-standalone-vm-execution.md)
 - [Milestone 7 — Pascal language completeness (completed)](milestones/07-pascal-language-completeness.md)
 - [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
-- [Milestone 9 — Multi-language expansion (deferred)](milestones/09-multi-language-expansion.md)
+- [Milestone 9 — Pick database API](milestones/09-pick-database-api.md)
+- [Milestone 10 — Pascal dialect polish (optional)](milestones/10-pascal-dialect-polish.md)
+- [Milestone 11 — Multi-language expansion (deferred)](milestones/11-multi-language-expansion.md)
 
 **Release checkpoint:** Milestone 7 is complete. The toolchain reports `0.7.0`; cut
-git tag `v0.7.0` when ready. Next active work is Milestone 8. Multi-language expansion
-remains deferred as Milestone 9.
+git tag `v0.7.0` when ready. Active Pascal runtime work is Milestone 8; Pick integration
+is Milestone 9. Multi-language expansion remains deferred as Milestone 11.

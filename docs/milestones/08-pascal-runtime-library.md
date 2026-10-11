@@ -11,11 +11,12 @@ It follows:
 - [Milestone 7 — Pascal language completeness](07-pascal-language-completeness.md)
   (completed dialect: records, arrays, `case`, `{$I}`, …)
 - [Pascal dialect](../pascal-dialect.md) (supported behaviour today)
-- And **defers** [Milestone 9 — Multi-language expansion](09-multi-language-expansion.md)
-  until this runtime track is far enough for teaching and small console programs
+- And is followed by [Milestone 9 — Pick database API](09-pick-database-api.md) for Gemini
+  Pick; optional [Milestone 10 — dialect polish](10-pascal-dialect-polish.md); multi-language
+  expansion remains [Milestone 11](11-multi-language-expansion.md) (deferred)
 
-**Priority:** finish Pascal as a credible console language (library + I/O) before BASIC /
-COMAL / Fortran / COBOL front-ends.
+**Priority:** finish Pascal as a credible console + Wirth-file language (library + I/O)
+before PickDB (M9), optional polish (M10), and other language front-ends (M11).
 
 ### Goals (summary)
 
@@ -54,10 +55,12 @@ COMAL / Fortran / COBOL front-ends.
 - Units / separate compilation.
 - Sets, pointers / heap (`new` / `dispose`), `with`, `goto` / `label`.
 - Packed arrays (`pack` / `unpack`), `page`, Turbo string helpers (`length`, `copy`,
-  `pos`, …).
+  `pos`, …) — string helpers / field widths may land in
+  [Milestone 10](10-pascal-dialect-polish.md).
 - Full directive language beyond `{$I}` + warn-on-unknown.
 - Objects, overlays, graphics, ISO 7185 / full TP3 claims.
-- Additional source languages ([Milestone 9](09-multi-language-expansion.md)).
+- PickDB / MultiValue API ([Milestone 9](09-pick-database-api.md)).
+- Additional source languages ([Milestone 11](11-multi-language-expansion.md)).
 
 ---
 
@@ -216,9 +219,9 @@ without hard-wiring POSIX or Pick VOC/MD paths in Apollo (see Milestone 7 —
   the required file services (capability check, not a Pick-specific language fork).
 
 **Explicit non-goals (Stage 3):** Pick / MultiValue database API (`PickFile`,
-`PickOpen`, select lists, attr helpers) — that is **Track B** in
-[`pascal-file-io.md`](../pascal-file-io.md), scheduled later. Whether a Pick host ever
-exposes Wirth files through the façade remains a runtime capability decision.
+`PickOpen`, select lists, attr helpers) — that is **Track B** /
+[Milestone 9](09-pick-database-api.md). Whether a Pick host ever exposes Wirth files
+through the façade remains a runtime capability decision.
 
 **Acceptance criteria**
 
@@ -243,7 +246,7 @@ exposes Wirth files through the façade remains a runtime capability decision.
 - [ ] File I/O either shipped (Stage 3) or still clearly blocked with documented rationale.
       **M8 may close after Stages 1–2** if the host FS façade has not arrived; Stage 3
       remains the home for files rather than a new milestone.
-- [x] Multi-language expansion remains deferred as Milestone 9.
+- [x] Multi-language expansion remains deferred as Milestone 11; PickDB is Milestone 9.
 - [x] Dialect overview stays the user-facing source of truth for what is supported.
 - [x] `ctest` green on a clean configure/build.
 
@@ -262,19 +265,22 @@ exposes Wirth files through the façade remains a runtime capability decision.
 
 ## Boundary with adjacent milestones
 
-| Concern | M7 | M8 | M9 |
-|---------|----|----|-----|
-| Dialect skeleton | Done | Regression | — |
-| Standard functions / console / files | Deferred | Owns | — |
-| Second languages | Deferred | Deferred | Owns when resumed |
+| Concern | M7 | M8 | M9 | M10 | M11 |
+|---------|----|----|-----|-----|-----|
+| Dialect skeleton | Done | Regression | — | — | — |
+| Standard functions / console / Wirth files | Deferred | Owns | — | — | — |
+| PickDB | — | Design only | Owns | — | — |
+| Field widths / string polish | — | Deferred | Deferred | Owns (optional) | — |
+| Second languages | Deferred | Deferred | Deferred | Deferred | Owns when resumed |
 
 ---
 
 ## Out of scope reminders
 
-- Do not start Milestone 9 front-ends during M8.
+- Do not start Milestone 11 front-ends during M8.
 - Do not implement Pascal files against a Pick-only or POSIX-only path; do not pull
-  PickDB / MultiValue APIs into Stage 3 (see [`pascal-file-io.md`](../pascal-file-io.md)).
+  PickDB / MultiValue APIs into Stage 3 (see [`pascal-file-io.md`](../pascal-file-io.md)
+  and [Milestone 9](09-pick-database-api.md)).
 - Units, sets, and pointers remain separate follow-ons unless explicitly pulled into a
   stage.
 - Do not expand Stage 1 beyond the locked ordinal/arithmetic set.

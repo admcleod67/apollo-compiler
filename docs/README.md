@@ -2,7 +2,7 @@
 
 - **[Overview](overview.md)** — purpose, architecture principles, and Gemini relationship
 - **[Pascal dialect](pascal-dialect.md)** — supported Pascal language behaviour (not a full manual)
-- **[Pascal file handling](pascal-file-io.md)** — Wirth `file` / `text` (M8 Stage 3) vs later PickDB API
+- **[Pascal file handling](pascal-file-io.md)** — Wirth `file` / `text` (M8 Stage 3) vs PickDB (M9)
 - **[Milestones](milestones.md)** — phased roadmap index (Milestone 0 onward)
 
 ## Milestone detail pages
@@ -19,4 +19,6 @@ sort in numeric order. See [`milestones/README.md`](milestones/README.md).
 - [Milestone 6 — Standalone VM execution](milestones/06-standalone-vm-execution.md) (completed)
 - [Milestone 7 — Pascal language completeness](milestones/07-pascal-language-completeness.md) (completed)
 - [Milestone 8 — Pascal runtime library](milestones/08-pascal-runtime-library.md)
-- [Milestone 9 — Multi-language expansion](milestones/09-multi-language-expansion.md) (deferred)
+- [Milestone 9 — Pick database API](milestones/09-pick-database-api.md)
+- [Milestone 10 — Pascal dialect polish](milestones/10-pascal-dialect-polish.md) (optional)
+- [Milestone 11 — Multi-language expansion](milestones/11-multi-language-expansion.md) (deferred)
