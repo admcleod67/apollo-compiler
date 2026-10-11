@@ -2,6 +2,7 @@
 
 - **[Overview](overview.md)** — purpose, architecture principles, and Gemini relationship
 - **[Pascal dialect](pascal-dialect.md)** — supported Pascal language behaviour (not a full manual)
+- **[Pascal file handling](pascal-file-io.md)** — `file` / `text` I/O (Milestone 8 Stage 3; placeholder)
 - **[Milestones](milestones.md)** — phased roadmap index (Milestone 0 onward)
 
 ## Milestone detail pages
