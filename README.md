@@ -73,7 +73,7 @@ ctest --test-dir build --output-on-failure
 
 Artifacts:
 
-- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--emit` / `--tbc`, `--version`, `--help`)
+- **`apolloc`** — compiler driver CLI (`--list`, `--tokens`, `--ast`, `--check`, `--ir`, `--emit` / `--tbc` with optional `-o`, `--version`, `--help`)
 - **`apollo-common`** — shared compiler support (source buffer, listing, diagnostics)
 - **`apollo-ir`** — shared language-neutral intermediate representation
 - **`apollo-codegen`** — Gemini `.tbc` text bytecode writer and IR emitter
@@ -139,11 +139,14 @@ non-zero if any errors were reported, and skips the IR dump when errors are pres
 ```bash
 ./build/src/tools/apolloc --emit examples/hello.pas
 ./build/src/tools/apolloc --tbc examples/count.pas
+./build/src/tools/apolloc --tbc examples/hello.pas -o hello.tbc
 ```
 
-Scans, parses, analyses, lowers, and emits Gemini `.tbc` text bytecode to stdout.
-`--tbc` is an alias for `--emit`. Diagnostics go to stderr; the process exits
-non-zero if any errors were reported, and skips the `.tbc` dump when errors are present.
+Scans, parses, analyses, lowers, and emits Gemini `.tbc` text bytecode. Without `-o`,
+bytecode goes to stdout; with `-o` / `--output FILE`, it is written to that path and
+stdout stays free of the artifact (IDE-friendly). `--tbc` is an alias for `--emit`.
+Diagnostics go to stderr; the process exits non-zero if any errors were reported, and
+skips writing `.tbc` when errors are present.
 
 ## Layout
 

@@ -11,7 +11,9 @@
 #include "apollo/pascal/TokenDump.hpp"
 #include "apollo/pascal/ir/Lower.hpp"
 
+#include <fstream>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -19,7 +21,7 @@ namespace {
 
 void printUsage(std::ostream &out) {
     out << "Usage: apolloc [--version] [--help] [--list <file>] [--tokens <file>] "
-           "[--ast <file>] [--check <file>] [--ir <file>] [--emit <file>]\n"
+           "[--ast <file>] [--check <file>] [--ir <file>] [--emit <file> [-o <out>]]\n"
         << "\n"
         << "Apollo Compiler — multi-language toolchain for the Gemini VM.\n"
         << "\n"
@@ -32,7 +34,8 @@ void printUsage(std::ostream &out) {
         << "  -c, --check FILE   Scan, parse, and semantically analyse Pascal source\n"
         << "  -i, --ir FILE      Analyse and lower Pascal source to an IR dump\n"
         << "  -e, --emit FILE    Analyse, lower, and emit Gemini .tbc bytecode\n"
-        << "      --tbc FILE     Alias for --emit\n";
+        << "      --tbc FILE     Alias for --emit\n"
+        << "  -o, --output FILE  With --emit/--tbc: write .tbc to FILE instead of stdout\n";
 }
 
 int listFile(std::string_view path) {
@@ -118,7 +121,7 @@ int irFile(std::string_view path) {
     return diagnostics.errorCount() == 0 ? 0 : 1;
 }
 
-int emitFile(std::string_view path) {
+int emitFile(std::string_view path, std::optional<std::string_view> outputPath) {
     const auto loaded = apollo::common::loadSourceFile(path);
     if (!loaded.file) {
         std::cerr << "apolloc: " << loaded.error << '\n';
@@ -136,7 +139,23 @@ int emitFile(std::string_view path) {
             if (diagnostics.errorCount() == 0) {
                 const std::string tbc = apollo::codegen::emitTbc(module, diagnostics);
                 if (diagnostics.errorCount() == 0) {
-                    std::cout << tbc;
+                    if (outputPath) {
+                        std::ofstream out{std::string(*outputPath)};
+                        if (!out) {
+                            std::cerr << "apolloc: failed to open '" << *outputPath
+                                      << "' for writing\n";
+                            diagnostics.write(std::cerr);
+                            return 1;
+                        }
+                        out << tbc;
+                        if (!out) {
+                            std::cerr << "apolloc: failed to write '" << *outputPath << "'\n";
+                            diagnostics.write(std::cerr);
+                            return 1;
+                        }
+                    } else {
+                        std::cout << tbc;
+                    }
                 }
             }
         }
@@ -208,7 +227,27 @@ int main(int argc, char *argv[]) {
             printUsage(std::cerr);
             return 1;
         }
-        return emitFile(argv[2]);
+        std::optional<std::string_view> outputPath;
+        if (argc >= 4) {
+            const std::string_view flag = argv[3];
+            if (flag != "-o" && flag != "--output") {
+                std::cerr << "apolloc: unexpected argument '" << flag << "'\n";
+                printUsage(std::cerr);
+                return 1;
+            }
+            if (argc < 5) {
+                std::cerr << "apolloc: " << flag << " requires an output path\n";
+                printUsage(std::cerr);
+                return 1;
+            }
+            if (argc > 5) {
+                std::cerr << "apolloc: unexpected argument '" << argv[5] << "'\n";
+                printUsage(std::cerr);
+                return 1;
+            }
+            outputPath = argv[4];
+        }
+        return emitFile(argv[2], outputPath);
     }
 
     std::cerr << "apolloc: unknown option: " << arg << '\n';

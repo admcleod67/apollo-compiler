@@ -309,3 +309,14 @@ add_test(
     COMMAND $<TARGET_FILE:apolloc> --tbc ${CMAKE_SOURCE_DIR}/examples/hello.pas
 )
 set_tests_properties(apolloc_tbc_hello PROPERTIES PASS_REGULAR_EXPRESSION "Hello, Gemini")
+
+add_test(
+    NAME apolloc_emit_o_hello
+    COMMAND sh -c "$<TARGET_FILE:apolloc> --tbc ${CMAKE_SOURCE_DIR}/examples/hello.pas -o ${CMAKE_BINARY_DIR}/apolloc_o_hello.tbc && grep -q 'Hello, Gemini' ${CMAKE_BINARY_DIR}/apolloc_o_hello.tbc"
+)
+
+add_test(
+    NAME apolloc_emit_o_error
+    COMMAND $<TARGET_FILE:apolloc> --tbc ${CMAKE_SOURCE_DIR}/tests/fixtures/check_error.pas -o ${CMAKE_BINARY_DIR}/apolloc_o_error.tbc
+)
+set_tests_properties(apolloc_emit_o_error PROPERTIES WILL_FAIL TRUE)
